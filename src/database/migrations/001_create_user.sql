@@ -1,0 +1,13 @@
+-- Up migration
+
+CREATE TABLE accounts (
+      account_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+      name VARCHAR2(100) NOT NULL,
+      password_hash VARCHAR2(255) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- Down migration
+
+DROP TABLE accounts;
