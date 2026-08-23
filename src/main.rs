@@ -1,11 +1,19 @@
 mod account;
+mod account_repository;
+mod account_service;
 
+use std::sync::{Arc, Mutex};
 use axum::*;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use oracledb::Config;
+use axum::routing::{get, post};
+use oracledb::{Config, Connection};
 use serde_json::json;
+use crate::account_service::AccountService;
 
+#[derive(Clone)]
+pub struct AppState {
+	pub account_service: Arc<AccountService>,
+}
 async fn health_check() -> impl IntoResponse {
 	Json(json!({
 		"status": "ok",
@@ -13,9 +21,14 @@ async fn health_check() -> impl IntoResponse {
 	}))
 }
 
-fn create_app() -> Router {
+fn create_app(conn: Connection) -> Router {
+	let repo = account_repository::AccountRepository::new(Arc::new(Mutex::new(conn)));
+	let account_service = Arc::new(account_service::AccountService::new(repo));
+	let state = AppState { account_service };
+
 	Router::new()
 		.route("/health", get(health_check))
+		.route("/create", post(account_service::create_account)).with_state(state)
 
 
 }
@@ -34,12 +47,18 @@ async fn main() {
 		.expect("OracleDB config error")
 		.set_credentials(&user, &password);
 
-	match oracledb::connect(config) {
-		Ok(_conn) => println!("Connected to database"),
-		Err(e) => eprintln!("{:?}", e),
-	}
+	let conn = match oracledb::connect(config) {
+		Ok(connection) => {
+			println!("Connected to database");
+			connection
+		},
+		Err(e) => {
+			eprintln!("{:?}", e);
+			std::process::exit(1);
+		},
+	};
 
-	let app = create_app();
+	let app = create_app(conn);
 	let host = std::env::var("APP_HOST")
 		.unwrap_or_else(|_| "0.0.0.0".to_string());
 
