@@ -116,7 +116,7 @@ impl From<Account> for AccountResponse {
 	fn from(account: Account) -> Self {
 		AccountResponse {
 			id: account.account_id.value(),
-			name: account.name.as_str().to_string(),
+			name: String::from(account.name.as_str()),
 			created_at: account.created_at,
 		}
 	}

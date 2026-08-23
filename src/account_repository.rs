@@ -28,7 +28,7 @@ impl AccountRepository {
 				)
 				.map_err(|e| AccountError::DatabaseError(e.to_string()))?;
 
-			conn.commit().map_err(|e| AccountError::DatabaseError(e.to_string()))?; 
+			conn.commit().map_err(|e| AccountError::DatabaseError(e.to_string()))?;
 
 			let row = conn
 				.query_row(
