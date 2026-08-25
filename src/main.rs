@@ -1,6 +1,6 @@
-mod account;
-mod account_repository;
-mod account_service;
+mod users;
+mod users_repository;
+mod users_service;
 
 use std::sync::{Arc, Mutex};
 use axum::*;
@@ -8,11 +8,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use oracledb::{Config, Connection};
 use serde_json::json;
-use crate::account_service::AccountService;
+use crate::users_service::UsersService;
 
 #[derive(Clone)]
 pub struct AppState {
-	pub account_service: Arc<AccountService>,
+	pub account_service: Arc<UsersService>,
 }
 async fn health_check() -> impl IntoResponse {
 	Json(json!({
@@ -22,13 +22,13 @@ async fn health_check() -> impl IntoResponse {
 }
 
 fn create_app(conn: Connection) -> Router {
-	let repo = account_repository::AccountRepository::new(Arc::new(Mutex::new(conn)));
-	let account_service = Arc::new(account_service::AccountService::new(repo));
+	let repo = users_repository::UsersRepository::new(Arc::new(Mutex::new(conn)));
+	let account_service = Arc::new(users_service::UsersService::new(repo));
 	let state = AppState { account_service };
 
 	Router::new()
 		.route("/health", get(health_check))
-		.route("/create", post(account_service::create_account)).with_state(state)
+		.route("/create", post(users_service::create_user)).with_state(state)
 
 
 }
