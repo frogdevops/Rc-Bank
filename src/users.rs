@@ -5,7 +5,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use crate::users::UsersError::NotFound;
 use crate::users_service::UsersResponse;
 
 pub(crate) struct Email(String);

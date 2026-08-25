@@ -17,19 +17,18 @@ impl UsersRepository {
 
 		tokio::task::spawn_blocking(move || {
 			let conn = conn.lock().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-			conn
-				.execute(
-					"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
-                     VALUES (:1, :2, :3, :4, :5, :6)",
-					&[
-						&new_user.name.first_name,
-						&new_user.name.middle_name,
-						&new_user.name.last_name,
-						&new_user.user_name,
-						&new_user.password.hash_str(),
-						&new_user.email.as_ref().map(|e| e.as_str()),
-					],
-				)
+			conn.execute_named(
+				"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
+     VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",
+				&[
+					("first_name", &new_user.name.first_name),
+					("middle_name", &new_user.name.middle_name),
+					("last_name", &new_user.name.last_name),
+					("user_name", &new_user.user_name),
+					("password_hash", &new_user.password.hash_str()),
+					("email", &new_user.email.as_ref().map(|e| e.as_str())),
+				],
+			)
 				.map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
 			conn.commit().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
