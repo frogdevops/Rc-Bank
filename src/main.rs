@@ -1,6 +1,7 @@
 mod users;
 mod users_repository;
 mod users_service;
+mod accounts;
 
 use std::sync::{Arc, Mutex};
 use axum::*;

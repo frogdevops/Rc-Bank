@@ -3,6 +3,7 @@
 CREATE TABLE accounts (
     account_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_number VARCHAR(20) UNIQUE NOT NULL,
+    account_type VARCHAR(20) NOT NULL,
     user_id NUMBER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -12,6 +13,14 @@ CREATE TABLE accounts (
         CONSTRAINT fk_account_user
         FOREIGN KEY (user_id)
         REFERENCES users(USER_ID),
+
+        CONSTRAINT fk_account_type
+        CHECK (
+            account_type in (
+                'SAVINGS',
+                'CHECKING'
+                )
+            ),
 
         CONSTRAINT chk_account_status
         CHECK (
