@@ -8,6 +8,30 @@ use serde::Deserialize;
 use crate::users::UsersError::NotFound;
 use crate::users_service::UsersResponse;
 
+pub(crate) struct Email(String);
+
+impl Email {
+	pub(crate) fn new(raw: String) -> Result<Self, UsersError> {
+		let raw = raw.trim().to_string();
+
+		if raw.is_empty() {
+			return Err(UsersError::InvalidInput("email cannot be empty".into()));
+		}
+		if !raw.contains('@') {
+			return Err(UsersError::InvalidInput("invalid email format".into()));
+		}
+		if raw.len() > 200 {
+
+			return Err(UsersError::InvalidInput("email too long".into()));
+		}
+
+		Ok(Email(raw))
+	}
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+
 pub(crate) struct Name {
 	pub(crate) first_name: String,
 	pub(crate) middle_name: Option<String>,
@@ -124,6 +148,7 @@ pub struct Users {
 	pub(crate) name: Name,
 	pub(crate) user_id: UsersID,
 	pub(crate) user_name: String,
+	pub(crate) email: Option<Email>,
 	pub(crate) password: Password,
 	pub(crate) created_at: DateTime<Utc>,
 	pub(crate) updated_at: DateTime<Utc>,
@@ -142,12 +167,13 @@ impl From<Users> for UsersResponse {
 pub struct NewUser {
 	pub(crate) name: Name,
 	pub(crate) password: Password,
-	pub(crate) user_name: String
+	pub(crate) user_name: String,
+	pub(crate) email: Option<Email>,
 }
 
 impl NewUser {
-	pub(crate) fn new(name: Name, password: Password, user_name: String) -> Self {
-		NewUser { name, password, user_name}
+	pub(crate) fn new(name: Name, password: Password, user_name: String, email: Option<Email>) -> Self {
+		NewUser { name, password, user_name, email}
 	}
 
 	fn name(&self) -> &Name {
@@ -180,6 +206,7 @@ pub struct CreateUsersRequest {
 	pub(crate) last_name: String,
 	pub(crate) user_name: String,
 	pub(crate) password: String,
+	pub(crate) email: Option<String>,
 }
 #[cfg(test)]
 mod test {

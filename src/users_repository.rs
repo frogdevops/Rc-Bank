@@ -19,14 +19,15 @@ impl UsersRepository {
 			let conn = conn.lock().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 			conn
 				.execute(
-					"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash) \
-                     VALUES (:1, :2, :3, :4, :5)",
+					"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
+                     VALUES (:1, :2, :3, :4, :5, :6)",
 					&[
 						&new_user.name.first_name,
 						&new_user.name.middle_name,
 						&new_user.name.last_name,
 						&new_user.user_name,
 						&new_user.password.hash_str(),
+						&new_user.email.as_ref().map(|e| e.as_str()),
 					],
 				)
 				.map_err(|e| UsersError::DatabaseError(e.to_string()))?;
@@ -55,6 +56,7 @@ impl UsersRepository {
 					user_id: UsersID::from_db(id),
 					name: new_user.name,
 					user_name: new_user.user_name,
+					email: new_user.email,
 					password: new_user.password,
 					created_at,
 					updated_at

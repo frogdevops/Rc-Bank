@@ -1,7 +1,7 @@
 use axum::extract::State;
 use axum::Json;
 use chrono::{DateTime, Utc};
-use crate::users::{Users, UsersError, CreateUsersRequest, Name, NewUser, Password};
+use crate::users::{Users, UsersError, CreateUsersRequest, Name, NewUser, Password, Email};
 use crate::users_repository::UsersRepository;
 use crate::AppState;
 
@@ -26,7 +26,11 @@ impl UsersService {
 	pub async fn create_user(&self, req: CreateUsersRequest) -> Result<Users, UsersError> {
 		let name = Name::new(req.first_name, req.middle_name, req.last_name)?;
 		let password = Password::new(req.password)?;
-		let new_user = NewUser::new(name, password, req.user_name);
+		let email = match req.email {
+			Some(email) => Some(Email::new(email)?),
+			None => None
+		};
+		let new_user = NewUser::new(name, password, req.user_name, email);
 
 		self.repo.insert(new_user).await
 

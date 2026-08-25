@@ -5,7 +5,7 @@ CREATE TABLE users (
        first_name VARCHAR2(100) NOT NULL,
        middle_name VARCHAR2(50),
        last_name VARCHAR2(100) NOT NULL,
-       email VARCHAR2(50),
+       email VARCHAR2(200),
        user_name VARCHAR(50) NOT NULL UNIQUE,
        password_hash VARCHAR(255) NOT NULL,
        refresh_token VARCHAR(64),
