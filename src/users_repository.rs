@@ -19,7 +19,7 @@ impl UsersRepository {
 			let conn = conn.lock().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 			conn.execute_named(
 				"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
-     VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",
+                     VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",
 				&[
 					("first_name", &new_user.name.first_name),
 					("middle_name", &new_user.name.middle_name),
