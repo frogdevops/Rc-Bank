@@ -4,10 +4,24 @@ use serde::Deserialize;
 pub(crate) struct AccountID(i32);
 pub(crate) struct AccountNumber(i32);
 pub(crate) struct Balance(i32);
+
+impl Balance {
+	//TODO: Validate the balance
+	// if balance is < 0 reject
+	// if balance is greater than account limit reject
+
+}
 pub(crate) struct UserID(i32);
 
-pub(crate) struct UserName(String);
+impl UserID {
+	//TODO: Get UserId from database
+	// Simple handling
+}
 
+pub(crate) struct UserName(String);
+impl UserName {
+	//TODO: Get the username and stuff it into the system as type
+}
 pub(crate) enum Status {
 	Active,
 	Frozen,
@@ -15,9 +29,17 @@ pub(crate) enum Status {
 	Suspended,
 }
 
+impl Status {
+	// TODO: Convert to String based on the status
+}
+
 pub(crate) enum AccountType {
 	Savings,
 	Checking,
+}
+
+impl AccountType {
+	// TODO: From request gets deserialized
 }
 pub(crate) struct Accounts {
 	account_id: AccountID,
@@ -29,7 +51,11 @@ pub(crate) struct Accounts {
 	balance: Balance,
 	status: Status,
 }
-#[derive(Deserialize)]
+
+impl Accounts {
+	// TODO: wire up
+}
+
 pub(crate) struct CreateAccountSystem {
 
 }
