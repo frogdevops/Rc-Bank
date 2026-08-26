@@ -1,22 +1,22 @@
 use crate::users::{Users, UsersError, UsersID, Name, NewUser, Password};
-use oracledb::{Connection, OracleTimestamp};
+use oracledb::{Connection, OracleTimestamp, Pool};
 use std::sync::{Arc, Mutex};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
 pub struct UsersRepository {
-	conn: Arc<Mutex<Connection>>,
+	pool: Arc<Pool>,
 }
 
 impl UsersRepository {
-	pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-		UsersRepository { conn }
+	pub fn new(pool: Arc<Pool>) -> Self {
+		UsersRepository { pool }
 	}
 
 	pub async fn insert(&self, new_user: NewUser) -> Result<Users, UsersError> {
-		let conn = self.conn.clone();
+		let pool = self.pool.clone();
 
 		tokio::task::spawn_blocking(move || {
-			let conn = conn.lock().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
+			let conn = pool.acquire().map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 			conn.execute_named(
 				"INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
                      VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",

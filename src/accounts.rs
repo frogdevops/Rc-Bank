@@ -8,6 +8,10 @@ use crate::users::{UsersID};
 pub(crate) struct AccountID(i64);
 
 impl AccountID {
+	// Something to do with the account string
+}
+
+impl AccountID {
 	pub(crate) fn from_db(value: i64)-> Self {
 		AccountID(value)
 	}
@@ -16,6 +20,10 @@ impl AccountID {
 	}
 }
 pub(crate) struct AccountNumber(String);
+
+impl AccountNumber {
+
+}
 pub(crate) struct Balance(i64);
 
 pub(crate) enum AccountError {
@@ -36,18 +44,9 @@ impl IntoResponse for AccountError {
 }
 
 impl Balance {
-	pub fn new(cents: i64) -> Result<Self, AccountError> {
-		if cents < 0 {
-			return Err(AccountError::InvalidInput("cents must be positive".into()));
-		}
-		Ok(Self(cents))
-	}
-
-	pub fn cents(&self) -> i64 {
-		self.0
-	}
+	// Derive by database calculation
 }
-pub(crate) struct UserID(i32);
+pub(crate) struct UserID(UsersID);
 
 impl UserID {
 	//TODO: Get UserId from database

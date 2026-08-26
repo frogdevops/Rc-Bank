@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use axum::*;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use oracledb::{Config, Connection};
+use oracledb::{Config, Connection, Pool, PoolConfig};
 use serde_json::json;
 use crate::users_service::UsersService;
 
@@ -22,9 +22,9 @@ async fn health_check() -> impl IntoResponse {
 	}))
 }
 
-fn create_app(conn: Connection) -> Router {
-	let repo = users_repository::UsersRepository::new(Arc::new(Mutex::new(conn)));
-	let account_service = Arc::new(users_service::UsersService::new(repo));
+fn create_app(pool: Pool) -> Router {
+	let repo = users_repository::UsersRepository::new(Arc::new(pool));
+	let account_service = Arc::new(UsersService::new(repo));
 	let state = AppState { account_service };
 
 	Router::new()
@@ -43,23 +43,23 @@ async fn main() {
 	let oracle_host = std::env::var("HOST").expect("host not found");
 	let service_name = std::env::var("SERVICE_NAME").expect("service name not found");
 
-	let config = Config::default()
+	let pool_config = PoolConfig::default()
 		.set_connect_string(&format!("{}:{}/{}", oracle_host, oracle_port, service_name))
 		.expect("OracleDB config error")
 		.set_credentials(&user, &password);
 
-	let conn = match oracledb::connect(config) {
-		Ok(connection) => {
-			println!("Connected to database");
-			connection
+	let pool = match oracledb::create_pool(pool_config) {
+		Ok(p) => {
+			println!("Database pool created successfully");
+			p
 		},
 		Err(e) => {
-			eprintln!("{:?}", e);
+			eprintln!("Pool creation error: {:?}", e);
 			std::process::exit(1);
 		},
 	};
 
-	let app = create_app(conn);
+	let app = create_app(pool);
 	let host = std::env::var("APP_HOST")
 		.unwrap_or_else(|_| "0.0.0.0".to_string());
 
