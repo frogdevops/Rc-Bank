@@ -3,11 +3,11 @@ mod users_repository;
 mod users_service;
 mod accounts;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use axum::*;
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse};
 use axum::routing::{get, post};
-use oracledb::{Config, Connection, Pool, PoolConfig};
+use oracledb::{Pool, PoolConfig};
 use serde_json::json;
 use crate::users_service::UsersService;
 

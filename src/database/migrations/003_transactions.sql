@@ -11,7 +11,8 @@ CREATE TABLE transactions (
 
             CONSTRAINT fk_account_id
             FOREIGN KEY (account_id)
-            REFERENCES accounts (ACCOUNT_ID),
+            REFERENCES accounts (ACCOUNT_ID)
+                          ON DELETE CASCADE ,
 
 
             CONSTRAINT chk_transaction_type

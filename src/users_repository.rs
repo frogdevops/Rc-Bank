@@ -1,6 +1,6 @@
-use crate::users::{Users, UsersError, UsersID, Name, NewUser, Password};
-use oracledb::{Connection, OracleTimestamp, Pool};
-use std::sync::{Arc, Mutex};
+use crate::users::{Users, UsersError, UsersID, NewUser};
+use oracledb::{OracleTimestamp, Pool};
+use std::sync::{Arc};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 
 pub struct UsersRepository {
@@ -54,7 +54,6 @@ impl UsersRepository {
 				Ok(Users {
 					user_id: UsersID::from_db(id),
 					name: new_user.name,
-					user_name: new_user.user_name,
 					email: new_user.email,
 					password: new_user.password,
 					created_at,

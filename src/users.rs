@@ -146,7 +146,6 @@ impl Password {
 pub struct Users {
 	pub(crate) name: Name,
 	pub(crate) user_id: UsersID,
-	pub(crate) user_name: String,
 	pub(crate) email: Option<Email>,
 	pub(crate) password: Password,
 	pub(crate) created_at: DateTime<Utc>,
@@ -173,13 +172,6 @@ pub struct NewUser {
 impl NewUser {
 	pub(crate) fn new(name: Name, password: Password, user_name: String, email: Option<Email>) -> Self {
 		NewUser { name, password, user_name, email}
-	}
-
-	fn name(&self) -> &Name {
-		&self.name
-	}
-	fn password(&self) -> &Password {
-		&self.password
 	}
 }
 

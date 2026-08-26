@@ -11,7 +11,8 @@ CREATE TABLE accounts (
 
         CONSTRAINT fk_account_user
         FOREIGN KEY (user_id)
-        REFERENCES users(USER_ID),
+        REFERENCES users(USER_ID)
+                ON DELETE CASCADE,
 
         CONSTRAINT fk_account_type
         CHECK (
