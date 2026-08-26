@@ -7,7 +7,6 @@ CREATE TABLE accounts (
     user_id NUMBER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    balance NUMBER(15,2) DEFAULT 0 NOT NULL,
     status VARCHAR(20) DEFAULT 'ACTIVE' NOT NULL,
 
         CONSTRAINT fk_account_user
@@ -34,4 +33,5 @@ CREATE TABLE accounts (
 );
 
 -- Down migration
+
 DROP TABLE accounts;
