@@ -16,6 +16,7 @@ BEGIN
     v_seq := account_number_seq.NEXTVAL;
 
     -- hash the sequence value + a fixed app-level constant
+    -- noinspection SqlResolve
     v_raw := SYS.DBMS_CRYPTO.HASH(
             UTL_I18N.STRING_TO_RAW(TO_CHAR(v_seq) || 'ZKUJvA32z3s++6PQp7XRU9DWdph8Gi3+70w9Er5EmTU=', 'AL32UTF8'),
             SYS.DBMS_CRYPTO.HASH_SH256

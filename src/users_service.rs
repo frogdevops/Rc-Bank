@@ -41,6 +41,6 @@ pub async fn create_user(
 	State(state): State<AppState>,
 	Json(req): Json<CreateUsersRequest>,
 ) -> Result<Json<UsersResponse>, UsersError> {
-	let user = state.account_service.create_user(req).await?;
+	let user = state.user_service.create_user(req).await?;
 	Ok(Json(UsersResponse::from(user)))
 }

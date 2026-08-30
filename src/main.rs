@@ -13,7 +13,7 @@ use crate::users_service::UsersService;
 
 #[derive(Clone)]
 pub struct AppState {
-	pub account_service: Arc<UsersService>,
+	pub user_service: Arc<UsersService>,
 }
 async fn health_check() -> impl IntoResponse {
 	Json(json!({
@@ -25,7 +25,7 @@ async fn health_check() -> impl IntoResponse {
 fn create_app(pool: Pool) -> Router {
 	let repo = users_repository::UsersRepository::new(Arc::new(pool));
 	let account_service = Arc::new(UsersService::new(repo));
-	let state = AppState { account_service };
+	let state = AppState { user_service: account_service };
 
 	Router::new()
 		.route("/health", get(health_check))
