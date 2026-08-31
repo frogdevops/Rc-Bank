@@ -1,5 +1,5 @@
 use std::fmt;
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::distributions::Alphanumeric;
@@ -22,6 +22,7 @@ pub enum AuthError {
     InvalidSignature,
     InvalidCredentials,
     InvalidRefreshToken,
+    SessionExpired(String),
     GenerationError(String),
 }
 
@@ -33,6 +34,7 @@ impl fmt::Display for AuthError {
             AuthError::InvalidSignature => write!(f, "invalid token signature"),
             AuthError::InvalidCredentials => write!(f, "invalid username or password"),
             AuthError::InvalidRefreshToken => write!(f, "invalid or revoked refresh token"),
+            AuthError::SessionExpired(msg) => write!(f, "session expired: {}", msg),
             AuthError::GenerationError(msg) => write!(f, "token generation error: {}", msg),
         }
     }
@@ -120,6 +122,33 @@ impl RefreshToken {
     }
 }
 
+pub struct SessionPolicy;
+
+impl SessionPolicy {
+    pub const INACTIVITY_LIMIT_DAYS: i64 = 3;
+    pub const HARD_CAP_LIMIT_DAYS: i64 = 30;
+
+    pub fn validate(
+        last_used_at: DateTime<Utc>,
+        created_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthError> {
+        if now - last_used_at > Duration::days(Self::INACTIVITY_LIMIT_DAYS) {
+            return Err(AuthError::SessionExpired(
+                "session expired due to 3 days of inactivity".to_string(),
+            ));
+        }
+
+        if now - created_at > Duration::days(Self::HARD_CAP_LIMIT_DAYS) {
+            return Err(AuthError::SessionExpired(
+                "session exceeded 30-day maximum lifetime".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,5 +230,38 @@ mod tests {
         assert_eq!(hash.len(), 64, "SHA-256 hex string must be exactly 64 characters for DB storage");
         assert!(token.verify_hash(&hash), "verification against own hash must succeed");
         assert!(!token.verify_hash("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"), "verification with different hash must fail");
+    }
+
+    // =========================================================
+    // 3. SESSION POLICY (3-DAY INACTIVITY & 30-DAY HARD CAP) TESTS
+    // =========================================================
+
+    #[test]
+    fn test_session_policy_active_session_passes() {
+        let now = Utc::now();
+        let created_at = now - Duration::days(5);
+        let last_used_at = now - Duration::hours(12); // Used 12h ago
+
+        assert!(SessionPolicy::validate(last_used_at, created_at, now).is_ok());
+    }
+
+    #[test]
+    fn test_session_policy_inactivity_timeout_fails() {
+        let now = Utc::now();
+        let created_at = now - Duration::days(10);
+        let last_used_at = now - Duration::days(4); // 4 days > 3 day limit
+
+        let err = SessionPolicy::validate(last_used_at, created_at, now).unwrap_err();
+        assert!(matches!(err, AuthError::SessionExpired(_)));
+    }
+
+    #[test]
+    fn test_session_policy_hard_cap_timeout_fails() {
+        let now = Utc::now();
+        let created_at = now - Duration::days(31); // 31 days > 30 day limit
+        let last_used_at = now - Duration::hours(1); // Active today, but overall session > 30 days
+
+        let err = SessionPolicy::validate(last_used_at, created_at, now).unwrap_err();
+        assert!(matches!(err, AuthError::SessionExpired(_)));
     }
 }

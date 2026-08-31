@@ -8,10 +8,10 @@ use std::sync::Arc;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bank_db::{create_oracle_pool, AccountsRepository, UsersRepository};
+use bank_db::{create_oracle_pool, AccountsRepository, RefreshTokensRepository, UsersRepository};
 use oracledb::Pool;
 use serde_json::json;
-use crate::handlers::{create_account, create_user, login, refresh};
+use crate::handlers::{create_account, create_user, login, logout, refresh};
 use crate::services::{AccountsService, AuthService, UsersService};
 use crate::state::AppState;
 
@@ -26,11 +26,12 @@ fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
     let pool_arc = Arc::new(pool);
 
     let users_repo = UsersRepository::new(pool_arc.clone());
-    let accounts_repo = AccountsRepository::new(pool_arc);
+    let accounts_repo = AccountsRepository::new(pool_arc.clone());
+    let refresh_tokens_repo = RefreshTokensRepository::new(pool_arc);
 
     let user_service = Arc::new(UsersService::new(users_repo.clone()));
     let account_service = Arc::new(AccountsService::new(accounts_repo));
-    let auth_service = Arc::new(AuthService::new(users_repo, jwt_secret.clone()));
+    let auth_service = Arc::new(AuthService::new(users_repo, refresh_tokens_repo, jwt_secret.clone()));
 
     let state = AppState {
         user_service,
@@ -44,6 +45,7 @@ fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
         .route("/users", post(create_user))
         .route("/auth/login", post(login))
         .route("/auth/refresh", post(refresh))
+        .route("/auth/logout", post(logout))
         .route("/accounts", post(create_account))
         .with_state(state)
 }

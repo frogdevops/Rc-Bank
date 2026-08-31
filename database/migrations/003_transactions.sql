@@ -33,4 +33,4 @@ CREATE TABLE transactions (
 );
 -- Down migrations
 
-DROP TABLE transactions;
+DROP TABLE transactions CASCADE CONSTRAINTS;

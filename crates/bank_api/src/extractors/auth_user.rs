@@ -12,7 +12,8 @@ impl WebError for AuthError {
             | AuthError::ExpiredToken
             | AuthError::InvalidSignature
             | AuthError::InvalidCredentials
-            | AuthError::InvalidRefreshToken => StatusCode::UNAUTHORIZED,
+            | AuthError::InvalidRefreshToken
+            | AuthError::SessionExpired(_) => StatusCode::UNAUTHORIZED,
             AuthError::GenerationError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }

@@ -145,11 +145,7 @@ impl UsersRepository {
         .map_err(|e| UsersError::DatabaseError(e.to_string()))?
     }
 
-    pub async fn update_refresh_token(
-        &self,
-        user_id: UsersID,
-        refresh_token_hash: Option<String>,
-    ) -> Result<(), UsersError> {
+    pub async fn find_by_user_id(&self, user_id: UsersID) -> Result<Users, UsersError> {
         let pool = self.pool.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -158,42 +154,19 @@ impl UsersRepository {
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
             let user_id_val = user_id.value();
-            conn.execute_named(
-                "UPDATE users SET refresh_token = :refresh_token, updated_at = CURRENT_TIMESTAMP WHERE user_id = :user_id",
-                &[
-                    ("refresh_token", &refresh_token_hash.as_deref()),
-                    ("user_id", &user_id_val),
-                ],
-            )
-            .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-
-            conn.commit()
-                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-
-            Ok(())
-        })
-        .await
-        .map_err(|e| UsersError::DatabaseError(e.to_string()))?
-    }
-
-    pub async fn find_by_refresh_token_hash(&self, hash: String) -> Result<Users, UsersError> {
-        let pool = self.pool.clone();
-
-        tokio::task::spawn_blocking(move || {
-            let conn = pool
-                .acquire()
-                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-
             let row = conn
                 .query_row_named(
-                    "SELECT user_id, first_name, middle_name, last_name, user_name, email, password_hash, created_at, updated_at \
-                     FROM users WHERE refresh_token = :refresh_token",
-                    &[("refresh_token", &hash)],
+                    "SELECT user_id, user_name, first_name, middle_name, last_name, email, password_hash, created_at, updated_at \
+                     FROM users WHERE user_id = :user_id",
+                    &[("user_id", &user_id_val)],
                 )
                 .map_err(|_| UsersError::NotFound)?;
 
             let id: i64 = row
                 .get("user_id")
+                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
+            let user_name: String = row
+                .get("user_name")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let first_name: String = row
                 .get("first_name")
@@ -203,9 +176,6 @@ impl UsersRepository {
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let last_name: String = row
                 .get("last_name")
-                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-            let user_name: String = row
-                .get("user_name")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let email_raw: Option<String> = row
                 .get("email")

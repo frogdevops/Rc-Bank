@@ -35,4 +35,5 @@ CREATE TABLE accounts (
 
 -- Down migration
 
-DROP TABLE accounts;
+
+DROP TABLE accounts CASCADE CONSTRAINTS;
