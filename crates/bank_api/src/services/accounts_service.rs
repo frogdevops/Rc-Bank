@@ -1,22 +1,32 @@
-use bank_db::AccountsRepository;
+use bank_db::{AccountsRepository, UsersRepository};
 use bank_domain::{AccountError, AccountType, Accounts, NewAccount, UsersID};
 
 pub struct AccountsService {
-    repo: AccountsRepository,
+    users_repo: UsersRepository,
+    accounts_repo: AccountsRepository,
 }
 
 impl AccountsService {
-    pub fn new(repo: AccountsRepository) -> Self {
-        AccountsService { repo }
+    pub fn new(users_repo: UsersRepository, accounts_repo: AccountsRepository) -> Self {
+        AccountsService {
+            users_repo,
+            accounts_repo,
+        }
     }
 
     pub async fn create_account(
         &self,
-        user_id_raw: i64,
+        user_id: UsersID,
         account_type: AccountType,
     ) -> Result<Accounts, AccountError> {
-        let user_id = UsersID::from_db(user_id_raw);
+        // 1. Verify user exists in the database
+        self.users_repo
+            .find_by_user_id(user_id)
+            .await
+            .map_err(|_| AccountError::NotFound)?;
+
+        // 2. Safe to insert new account
         let new_account = NewAccount::new(user_id, account_type);
-        self.repo.insert(new_account).await
+        self.accounts_repo.insert(new_account).await
     }
 }

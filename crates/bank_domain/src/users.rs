@@ -192,9 +192,6 @@ impl NewUser {
 mod tests {
     use super::*;
 
-    // ==========================================
-    // EMAIL VALIDATION EDGE CASES
-    // ==========================================
     #[test]
     fn test_email_valid_formats() {
         assert!(Email::new("user@example.com".to_string()).is_ok());

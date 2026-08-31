@@ -55,7 +55,7 @@ pub async fn create_account(
 ) -> Result<(StatusCode, Json<ApiResponse<AccountResponse>>), HttpError<AccountError>> {
     let account = state
         .account_service
-        .create_account(auth.user_id.value(), req.account_type)
+        .create_account(auth.user_id, req.account_type)
         .await?;
 
     Ok(ApiResponse::created(AccountResponse::from(account)))

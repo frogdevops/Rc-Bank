@@ -8,11 +8,17 @@ use std::sync::Arc;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use bank_db::{create_oracle_pool, AccountsRepository, RefreshTokensRepository, UsersRepository};
+use bank_db::{
+    create_oracle_pool, AccountsRepository, RefreshTokensRepository, TransactionsRepository,
+    UsersRepository,
+};
 use oracledb::Pool;
 use serde_json::json;
-use crate::handlers::{create_account, create_user, login, logout, refresh};
-use crate::services::{AccountsService, AuthService, UsersService};
+use crate::handlers::{
+    create_account, create_user, deposit, get_balance, get_statement, login, logout, refresh,
+    transfer, withdraw,
+};
+use crate::services::{AccountsService, AuthService, TransactionsService, UsersService};
 use crate::state::AppState;
 
 async fn health_check() -> impl IntoResponse {
@@ -27,16 +33,23 @@ fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
 
     let users_repo = UsersRepository::new(pool_arc.clone());
     let accounts_repo = AccountsRepository::new(pool_arc.clone());
-    let refresh_tokens_repo = RefreshTokensRepository::new(pool_arc);
+    let refresh_tokens_repo = RefreshTokensRepository::new(pool_arc.clone());
+    let transactions_repo = TransactionsRepository::new(pool_arc);
 
     let user_service = Arc::new(UsersService::new(users_repo.clone()));
-    let account_service = Arc::new(AccountsService::new(accounts_repo));
-    let auth_service = Arc::new(AuthService::new(users_repo, refresh_tokens_repo, jwt_secret.clone()));
+    let account_service = Arc::new(AccountsService::new(users_repo.clone(), accounts_repo));
+    let auth_service = Arc::new(AuthService::new(
+        users_repo,
+        refresh_tokens_repo,
+        jwt_secret.clone(),
+    ));
+    let transactions_service = Arc::new(TransactionsService::new(transactions_repo));
 
     let state = AppState {
         user_service,
         account_service,
         auth_service,
+        transactions_service,
         jwt_secret,
     };
 
@@ -47,6 +60,11 @@ fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
         .route("/auth/refresh", post(refresh))
         .route("/auth/logout", post(logout))
         .route("/accounts", post(create_account))
+        .route("/accounts/{id}/deposit", post(deposit))
+        .route("/accounts/{id}/withdraw", post(withdraw))
+        .route("/accounts/{id}/balance", get(get_balance))
+        .route("/accounts/{id}/statement", get(get_statement))
+        .route("/transfers", post(transfer))
         .with_state(state)
 }
 
