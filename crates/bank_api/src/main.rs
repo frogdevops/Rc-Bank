@@ -1,7 +1,8 @@
+mod extractors;
 mod handlers;
+mod response;
 mod services;
 mod state;
-mod response;
 
 use std::sync::Arc;
 use axum::response::IntoResponse;
@@ -10,8 +11,8 @@ use axum::{Json, Router};
 use bank_db::{create_oracle_pool, AccountsRepository, UsersRepository};
 use oracledb::Pool;
 use serde_json::json;
-use crate::handlers::{create_account, create_user};
-use crate::services::{AccountsService, UsersService};
+use crate::handlers::{create_account, create_user, login, refresh};
+use crate::services::{AccountsService, AuthService, UsersService};
 use crate::state::AppState;
 
 async fn health_check() -> impl IntoResponse {
@@ -21,23 +22,28 @@ async fn health_check() -> impl IntoResponse {
     }))
 }
 
-fn create_app(pool: Pool) -> Router {
+fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
     let pool_arc = Arc::new(pool);
 
     let users_repo = UsersRepository::new(pool_arc.clone());
     let accounts_repo = AccountsRepository::new(pool_arc);
 
-    let user_service = Arc::new(UsersService::new(users_repo));
+    let user_service = Arc::new(UsersService::new(users_repo.clone()));
     let account_service = Arc::new(AccountsService::new(accounts_repo));
+    let auth_service = Arc::new(AuthService::new(users_repo, jwt_secret.clone()));
 
     let state = AppState {
         user_service,
         account_service,
+        auth_service,
+        jwt_secret,
     };
 
     Router::new()
         .route("/health", get(health_check))
         .route("/users", post(create_user))
+        .route("/auth/login", post(login))
+        .route("/auth/refresh", post(refresh))
         .route("/accounts", post(create_account))
         .with_state(state)
 }
@@ -51,6 +57,9 @@ async fn main() {
     let oracle_port = std::env::var("PORT").expect("PORT not found");
     let oracle_host = std::env::var("HOST").expect("HOST not found");
     let service_name = std::env::var("SERVICE_NAME").expect("SERVICE_NAME not found");
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "default_secure_bank_jwt_secret_key_32_bytes!".to_string())
+        .into_bytes();
 
     let pool = match create_oracle_pool(&oracle_host, &oracle_port, &service_name, &user, &password) {
         Ok(p) => {
@@ -63,7 +72,7 @@ async fn main() {
         }
     };
 
-    let app = create_app(pool);
+    let app = create_app(pool, jwt_secret);
 
     let host = std::env::var("APP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("APP_PORT").unwrap_or_else(|_| "3000".to_string());

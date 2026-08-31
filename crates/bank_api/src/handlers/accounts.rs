@@ -4,6 +4,7 @@ use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use bank_domain::{AccountError, AccountType, Accounts, Status};
+use crate::extractors::AuthUser;
 use crate::response::{ApiResponse, HttpError, WebError};
 use crate::state::AppState;
 
@@ -19,7 +20,6 @@ impl WebError for AccountError {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAccountRequest {
-    pub user_id: i64,
     pub account_type: AccountType,
 }
 
@@ -50,11 +50,12 @@ impl From<Accounts> for AccountResponse {
 
 pub async fn create_account(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(req): Json<CreateAccountRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AccountResponse>>), HttpError<AccountError>> {
     let account = state
         .account_service
-        .create_account(req.user_id, req.account_type)
+        .create_account(auth.user_id.value(), req.account_type)
         .await?;
 
     Ok(ApiResponse::created(AccountResponse::from(account)))
