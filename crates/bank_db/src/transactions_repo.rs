@@ -202,17 +202,12 @@ impl TransactionsRepository {
                 .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
             let account_id_val = account_id.value();
-            let tx_type = TransactionType::Deposit.as_str();
+            let tx_type = TransactionType::Deposit.as_str().to_string();
 
-            // Insert single deposit (Oracle trigger calculates previous_hash and current_hash)
-            conn.execute_named(
+            conn.execute(
                 "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :transaction_type)",
-                &[
-                    ("account_id", &account_id_val),
-                    ("amount_cents", &amount_cents),
-                    ("transaction_type", &tx_type),
-                ],
+                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
+                &[&account_id_val, &amount_cents, &tx_type],
             )
             .map_err(|e| {
                 let _ = conn.rollback();
@@ -250,7 +245,7 @@ impl TransactionsRepository {
 
             let account_id_val = account_id.value();
 
-            // 1. Lock and check balance
+            // 1. Check current balance
             let balance_row = conn
                 .query_row_named(
                     "SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
@@ -268,16 +263,12 @@ impl TransactionsRepository {
             }
 
             let negative_amount = -amount_cents;
-            let tx_type = TransactionType::Withdrawal.as_str();
+            let tx_type = TransactionType::Withdrawal.as_str().to_string();
 
-            conn.execute_named(
+            conn.execute(
                 "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :transaction_type)",
-                &[
-                    ("account_id", &account_id_val),
-                    ("amount_cents", &negative_amount),
-                    ("transaction_type", &tx_type),
-                ],
+                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
+                &[&account_id_val, &negative_amount, &tx_type],
             )
             .map_err(|e| {
                 let _ = conn.rollback();
@@ -336,34 +327,26 @@ impl TransactionsRepository {
 
             let debit_amount = -amount_cents;
             let credit_amount = amount_cents;
-            let type_out = TransactionType::TransferOut.as_str();
-            let type_in = TransactionType::TransferIn.as_str();
+            let type_out = TransactionType::TransferOut.as_str().to_string();
+            let type_in = TransactionType::TransferIn.as_str().to_string();
 
-            // 2. Step 1: Debit sender (TRANSFER_OUT)
-            if let Err(e) = conn.execute_named(
+            // 2. Debit sender (TRANSFER_OUT)
+            if let Err(e) = conn.execute(
                 "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :transaction_type)",
-                &[
-                    ("account_id", &from_id),
-                    ("amount_cents", &debit_amount),
-                    ("transaction_type", &type_out),
-                ],
+                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
+                &[&from_id, &debit_amount, &type_out],
             ) {
-                let _ = conn.rollback(); // Explicit Rollback on failure!
+                let _ = conn.rollback();
                 return Err(TransactionError::DatabaseError(format!("Debit failed: {}", e)));
             }
 
-            // 3. Step 2: Credit recipient (TRANSFER_IN)
-            if let Err(e) = conn.execute_named(
+            // 3. Credit recipient (TRANSFER_IN)
+            if let Err(e) = conn.execute(
                 "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :transaction_type)",
-                &[
-                    ("account_id", &to_id),
-                    ("amount_cents", &credit_amount),
-                    ("transaction_type", &type_in),
-                ],
+                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
+                &[&to_id, &credit_amount, &type_in],
             ) {
-                let _ = conn.rollback(); // Explicit Rollback on failure!
+                let _ = conn.rollback();
                 return Err(TransactionError::DatabaseError(format!("Credit failed: {}", e)));
             }
 

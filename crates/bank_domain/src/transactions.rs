@@ -90,6 +90,27 @@ pub struct Transactions {
     pub created_at: DateTime<Utc>,
 }
 
+impl Transactions {
+    pub fn calculate_hash(
+        previous_hash: Option<&str>,
+        account_id: AccountID,
+        amount_cents: i64,
+        transaction_type: TransactionType,
+    ) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        let payload = format!(
+            "{}|{}|{}|{}",
+            previous_hash.unwrap_or("GENESIS"),
+            account_id.value(),
+            amount_cents,
+            transaction_type.as_str()
+        );
+        hasher.update(payload.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewTransaction {
     pub account_id: AccountID,
@@ -187,5 +208,25 @@ mod tests {
         assert_eq!(TransactionType::Withdrawal.as_str(), "WITHDRAWAL");
         assert_eq!(TransactionType::TransferIn.as_str(), "TRANSFER_IN");
         assert_eq!(TransactionType::TransferOut.as_str(), "TRANSFER_OUT");
+    }
+
+    // ==========================================
+    // HASH CHAINING TESTS
+    // ==========================================
+    #[test]
+    fn test_transaction_hash_chain_calculation() {
+        let acc_id = AccountID::from_db(10);
+        let genesis_hash = Transactions::calculate_hash(None, acc_id, 10000, TransactionType::Deposit);
+        assert_eq!(genesis_hash.len(), 64, "SHA-256 hash must be 64 hex characters");
+
+        // Next transaction chained to previous hash
+        let second_hash = Transactions::calculate_hash(
+            Some(&genesis_hash),
+            acc_id,
+            -2500,
+            TransactionType::Withdrawal,
+        );
+        assert_eq!(second_hash.len(), 64);
+        assert_ne!(genesis_hash, second_hash);
     }
 }

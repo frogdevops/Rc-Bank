@@ -1,8 +1,8 @@
 -- Up migration
 
 CREATE TABLE refresh_tokens (
-    token_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    user_id NUMBER NOT NULL,
+    token_id NUMBER(19) GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id NUMBER(19) NOT NULL,
     token_hash VARCHAR2(64) UNIQUE NOT NULL,
     device_info VARCHAR2(100),
     is_verified NUMBER(1) DEFAULT 1 NOT NULL,

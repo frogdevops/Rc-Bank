@@ -1,7 +1,7 @@
 -- Up migration
 
 CREATE TABLE users (
-    user_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id NUMBER(19) GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     first_name VARCHAR2(100) NOT NULL,
     middle_name VARCHAR2(50),
     last_name VARCHAR2(100) NOT NULL,

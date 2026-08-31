@@ -1,9 +1,9 @@
 -- Up migrations
 
 CREATE TABLE transactions (
-          transaction_id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          transaction_id NUMBER(19) GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
           account_id NUMBER NOT NULL,
-          amount_cents NUMBER(15,0) NOT NULL,       -- positive = deposit, negative = withdrawal
+          amount_cents NUMBER NOT NULL,              -- positive = deposit, negative = withdrawal
           transaction_type VARCHAR2(20) NOT NULL,    -- 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER_IN', etc.
           previous_hash VARCHAR2(64),                -- hash of the PRIOR transaction row (NULL for the first one)
           current_hash VARCHAR2(64) NOT NULL,        -- hash of THIS transaction's own data
@@ -31,6 +31,7 @@ CREATE TABLE transactions (
                   (transaction_type IN ('WITHDRAWAL', 'TRANSFER_OUT') AND amount_cents < 0)
                   )
 );
+
 -- Down migrations
 
 DROP TABLE transactions CASCADE CONSTRAINTS;
