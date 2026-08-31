@@ -1,0 +1,10 @@
+[package]
+name = "bank_db"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bank_domain = { path = "../bank_domain" }
+chrono = { version = "0.4.45", features = ["serde"] }
+oracledb = { git = "https://github.com/frogdevops/rust-oracledb.git", branch = "#12-named-column-lookup" }
+tokio = { version = "1.53.1", features = ["full"] }
