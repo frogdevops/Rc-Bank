@@ -1,3 +1,5 @@
+-- Up migration
+
 CREATE OR REPLACE TRIGGER trg_transactions_hash_chain
     BEFORE INSERT ON transactions
     FOR EACH ROW
@@ -34,3 +36,7 @@ BEGIN
     FROM DUAL;
 END;
 /
+
+-- Down migration
+
+DROP TRIGGER trg_transactions_hash_chain;
