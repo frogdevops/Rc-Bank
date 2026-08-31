@@ -1,10 +1,21 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use bank_domain::Users;
-use crate::handlers::error::ApiError;
+use bank_domain::{Users, UsersError};
+use crate::response::{ApiResponse, HttpError, WebError};
 use crate::state::AppState;
+
+impl WebError for UsersError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            UsersError::NotFound => StatusCode::NOT_FOUND,
+            UsersError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            UsersError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUsersRequest {
@@ -38,7 +49,7 @@ impl From<Users> for UsersResponse {
 pub async fn create_user(
     State(state): State<AppState>,
     Json(req): Json<CreateUsersRequest>,
-) -> Result<Json<UsersResponse>, ApiError> {
+) -> Result<(StatusCode, Json<ApiResponse<UsersResponse>>), HttpError<UsersError>> {
     let user = state
         .user_service
         .create_user(
@@ -51,5 +62,5 @@ pub async fn create_user(
         )
         .await?;
 
-    Ok(Json(UsersResponse::from(user)))
+    Ok(ApiResponse::created(UsersResponse::from(user)))
 }

@@ -28,6 +28,7 @@ impl IntoResponse for ApiError {
             ApiError::Users(UsersError::NotFound) => (StatusCode::NOT_FOUND, "user not found".to_string()),
             ApiError::Users(UsersError::InvalidInput(msg)) => (StatusCode::BAD_REQUEST, msg),
             ApiError::Users(UsersError::DatabaseError(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+	        
             ApiError::Account(AccountError::NotFound) => (StatusCode::NOT_FOUND, "account not found".to_string()),
             ApiError::Account(AccountError::InvalidInput(msg)) => (StatusCode::BAD_REQUEST, msg),
             ApiError::Account(AccountError::DatabaseError(msg)) => (StatusCode::INTERNAL_SERVER_ERROR, msg),

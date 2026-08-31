@@ -1,10 +1,21 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use bank_domain::{AccountType, Accounts, Status};
-use crate::handlers::error::ApiError;
+use bank_domain::{AccountError, AccountType, Accounts, Status};
+use crate::response::{ApiResponse, HttpError, WebError};
 use crate::state::AppState;
+
+impl WebError for AccountError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            AccountError::NotFound => StatusCode::NOT_FOUND,
+            AccountError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            AccountError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateAccountRequest {
@@ -40,11 +51,11 @@ impl From<Accounts> for AccountResponse {
 pub async fn create_account(
     State(state): State<AppState>,
     Json(req): Json<CreateAccountRequest>,
-) -> Result<Json<AccountResponse>, ApiError> {
+) -> Result<(StatusCode, Json<ApiResponse<AccountResponse>>), HttpError<AccountError>> {
     let account = state
         .account_service
         .create_account(req.user_id, req.account_type)
         .await?;
 
-    Ok(Json(AccountResponse::from(account)))
+    Ok(ApiResponse::created(AccountResponse::from(account)))
 }
