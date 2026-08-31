@@ -35,6 +35,17 @@ pub struct ApiResponse<T: Serialize> {
 }
 
 impl<T: Serialize> ApiResponse<T> {
+    pub fn success(data: T) -> (StatusCode, Json<Self>) {
+        (
+            StatusCode::OK,
+            Json(Self {
+                success: true,
+                data: Some(data),
+                error: None,
+            }),
+        )
+    }
+
     pub fn created(data: T) -> (StatusCode, Json<Self>) {
         (
             StatusCode::CREATED,
