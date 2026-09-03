@@ -1,8 +1,11 @@
 {
   "name": "Rc-Bank",
-  "image": "mcr.microsoft.com/devcontainers/rust:latest",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  "build": {
+    "dockerfile": "Dockerfile"
   },
-  "postCreateCommand": "git clone https://github.com/frogdevops/Rc-Bank.git /workspaces/rust-oracledb"
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "postCreateCommand": "git clone https://github.com/frogdevops/rust-oracledb.git /workspaces/rust-oracledb",
+  "remoteUser": "rc"
 }
