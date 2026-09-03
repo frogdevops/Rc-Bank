@@ -21,7 +21,7 @@ impl UsersRepository {
                 .acquire()
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
-            conn.execute_named(
+           let mut result =  conn.execute_named(
                 "INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
                  VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",
                 &[
@@ -38,25 +38,15 @@ impl UsersRepository {
             conn.commit()
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
-            let row = conn
-                .query_row_named(
-                    "SELECT user_id, created_at, updated_at FROM users \
-                     WHERE user_name = :user_name AND password_hash = :password_hash \
-                     ORDER BY user_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[
-                        ("user_name", &new_user.user_name),
-                        ("password_hash", &new_user.password.hash_str()),
-                    ],
-                )
-                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-
-            let id: i64 = row
+           let rows = result.returned_row()
+	           .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
+            let id: i64 = rows
                 .get("user_id")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-            let created_at_raw: OracleTimestamp = row
+            let created_at_raw: OracleTimestamp = rows
                 .get("created_at")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
-            let updated_at_raw: OracleTimestamp = row
+            let updated_at_raw: OracleTimestamp = rows
                 .get("updated_at")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
