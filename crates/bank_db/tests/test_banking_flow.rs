@@ -80,6 +80,7 @@ fn cleanup_user(pool: &Arc<oracledb::Pool>, user_name: &str) {
     conn.commit().ok();
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1000 series: Users Repository
 // ─────────────────────────────────────────────────────────────────────────────
@@ -722,3 +723,51 @@ async fn test_6000_full_end_to_end_banking_flow() {
     cleanup_user(&pool, &bob_uname);
     println!("✅ test_6000 MEGA END-TO-END PASSED 🏦🚀 alice_bal={}c bob_bal={}c", alice_balance.cents(), bob_final.cents());
 }
+
+/// Test 3005: Oracle trigger trg_transactions_status_guard blocks transactions on non-ACTIVE accounts.
+#[tokio::test]
+async fn test_3005_frozen_account_blocked_by_oracle_trigger() {
+    let pool = setup_pool();
+    let user_repo = UsersRepository::new(Arc::clone(&pool));
+    let acc_repo = AccountsRepository::new(Arc::clone(&pool));
+
+    let username = unique_username("test_3005");
+    let name = Name::new("Freeze".into(), None, "User".into()).unwrap();
+    let pwd = Password::new("StrongP@ssw0rd99!".into()).unwrap();
+    let user = user_repo.insert(NewUser::new(name, pwd, username.clone(), None)).await.unwrap();
+
+    let acc = acc_repo.insert(NewAccount::new(user.user_id, AccountType::Savings)).await.unwrap();
+
+    // Freeze the account directly in Oracle
+    let conn = pool.acquire().unwrap();
+    let acc_id_val = acc.account_id.value();
+    conn.execute_named(
+        "UPDATE accounts SET status = 'FROZEN' WHERE account_id = :id",
+        &[("id", &acc_id_val)],
+    ).unwrap();
+    conn.commit().unwrap();
+
+    // Attempt direct transaction insert on the frozen account — trigger must reject it!
+    let result = conn.execute_named(
+        "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
+         VALUES (:acc_id, 50000, 'DEPOSIT')",
+        &[("acc_id", &acc_id_val)],
+    );
+
+    match result {
+        Err(e) => {
+            let err_msg = e.to_string();
+            assert!(
+                err_msg.contains("ORA-20001") || err_msg.contains("ACCOUNT_NOT_ACTIVE"),
+                "Expected trigger to raise ACCOUNT_NOT_ACTIVE, got: {}",
+                err_msg
+            );
+            println!("✅ test_3005: Trigger successfully blocked transaction on FROZEN account!");
+        }
+        Ok(_) => panic!("Expected trigger to reject transaction on FROZEN account, but it succeeded!"),
+    }
+
+    cleanup_user(&pool, &username);
+}
+
+

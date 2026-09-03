@@ -299,7 +299,14 @@ fn insert_transaction_record(
                 ("out_created_at", &out_created_at),
             ],
         )
-        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+        .map_err(|e| {
+            let err_str = e.to_string();
+            if err_str.contains("ORA-20001") || err_str.contains("ACCOUNT_NOT_ACTIVE") {
+                TransactionError::AccountNotActive
+            } else {
+                TransactionError::DatabaseError(err_str)
+            }
+        })?;
 
     let row = result
         .returned_row()

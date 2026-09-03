@@ -32,6 +32,8 @@ CREATE TABLE transactions (
                   )
 );
 
+CREATE INDEX idx_transactions_account_id ON transactions (account_id);
+
 -- Down migrations
 
 DROP TABLE transactions CASCADE CONSTRAINTS;
