@@ -25,19 +25,7 @@ impl TransactionsRepository {
                 .acquire()
                 .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let account_id_val = account_id.value();
-            let row = conn
-                .query_row_named(
-                    "SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
-                     FROM transactions WHERE account_id = :account_id",
-                    &[("account_id", &account_id_val)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            let balance_cents: i64 = row
-                .get("balance_cents")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
+            let balance_cents = query_balance_cents(&conn, account_id.value())?;
             Ok(Balance::from_cents(balance_cents))
         })
         .await
@@ -65,51 +53,7 @@ impl TransactionsRepository {
                 )
                 .map_err(|_| TransactionError::AccountNotFound)?;
 
-            let id: i64 = row
-                .get("account_id")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let account_number_raw: String = row
-                .get("account_number")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let account_type_raw: String = row
-                .get("account_type")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let user_id_raw: i64 = row
-                .get("user_id")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let status_raw: String = row
-                .get("status")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let balance_cents: i64 = row
-                .get("balance_cents")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let created_at_raw: OracleTimestamp = row
-                .get("created_at")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let updated_at_raw: OracleTimestamp = row
-                .get("updated_at")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            let created_at = oracle_ts_to_chrono(&created_at_raw)
-                .map_err(TransactionError::DatabaseError)?;
-            let updated_at = oracle_ts_to_chrono(&updated_at_raw)
-                .map_err(TransactionError::DatabaseError)?;
-
-            let account_type = AccountType::from_str(&account_type_raw)
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let status = Status::from_str(&status_raw)
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            Ok(Accounts {
-                account_id: AccountID::from_db(id),
-                account_number: AccountNumber::from_db(account_number_raw),
-                account_type,
-                user_id: UsersID::from_db(user_id_raw),
-                balance: Balance::from_cents(balance_cents),
-                status,
-                created_at,
-                updated_at,
-            })
+            parse_account_row(row)
         })
         .await
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
@@ -139,115 +83,41 @@ impl TransactionsRepository {
                 )
                 .map_err(|_| TransactionError::AccountNotFound)?;
 
-            let id: i64 = row
-                .get("account_id")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let account_number_raw: String = row
-                .get("account_number")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let account_type_raw: String = row
-                .get("account_type")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let user_id_raw: i64 = row
-                .get("user_id")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let status_raw: String = row
-                .get("status")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let balance_cents: i64 = row
-                .get("balance_cents")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let created_at_raw: OracleTimestamp = row
-                .get("created_at")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let updated_at_raw: OracleTimestamp = row
-                .get("updated_at")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            let created_at = oracle_ts_to_chrono(&created_at_raw)
-                .map_err(TransactionError::DatabaseError)?;
-            let updated_at = oracle_ts_to_chrono(&updated_at_raw)
-                .map_err(TransactionError::DatabaseError)?;
-
-            let account_type = AccountType::from_str(&account_type_raw)
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-            let status = Status::from_str(&status_raw)
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            Ok(Accounts {
-                account_id: AccountID::from_db(id),
-                account_number: AccountNumber::from_db(account_number_raw),
-                account_type,
-                user_id: UsersID::from_db(user_id_raw),
-                balance: Balance::from_cents(balance_cents),
-                status,
-                created_at,
-                updated_at,
-            })
+            parse_account_row(row)
         })
         .await
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
     }
 
-	pub async fn deposit(
-		&self,
-		account_id: AccountID,
-		amount_cents: i64,
-	) -> Result<Transactions, TransactionError> {
-		let pool = self.pool.clone();
+    pub async fn deposit(
+        &self,
+        account_id: AccountID,
+        amount_cents: i64,
+    ) -> Result<Transactions, TransactionError> {
+        let pool = self.pool.clone();
 
-		tokio::task::spawn_blocking(move || {
-			let conn = pool
-				.acquire()
-				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+        tokio::task::spawn_blocking(move || {
+            let conn = pool
+                .acquire()
+                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-			let account_id_val = account_id.value();
-			let tx_type = TransactionType::Deposit.as_str().to_string();
+            let tx = insert_transaction_record(
+                &conn,
+                account_id.value(),
+                amount_cents,
+                TransactionType::Deposit,
+            )
+            .map_err(|e| {
+                let _ = conn.rollback();
+                e
+            })?;
 
-			let out_tx_id: i64 = 0;
-			let out_acc_id: i64 = 0;
-			let out_amount: i64 = 0;
-			let out_type = " ".repeat(20);
-			let out_prev_hash: Option<String> = Some(" ".repeat(64));
-			let out_curr_hash = " ".repeat(64);
-			let out_created_at = OracleTimestamp::default();
-
-			// 🚀 ATOMIC INSERT + RETURN IN ONE SINGLE HOP:
-			let mut result = conn.execute_named(
-				"INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :tx_type) \
-                 RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                 INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at",
-				&[
-					("account_id", &account_id_val),
-					("amount_cents", &amount_cents),
-					("tx_type", &tx_type),
-					("out_tx_id", &out_tx_id),
-					("out_acc_id", &out_acc_id),
-					("out_amount", &out_amount),
-					("out_type", &out_type),
-					("out_prev_hash", &out_prev_hash),
-					("out_curr_hash", &out_curr_hash),
-					("out_created_at", &out_created_at),
-				],
-			)
-			.map_err(|e| {
-				let _ = conn.rollback();
-				TransactionError::DatabaseError(e.to_string())
-			})?;
-
-			conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-			// 🪄 GRAB THE RETURNED TRANSACTION ROW DIRECTLY:
-			let row = result
-				.returned_row()
-				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-			parse_transaction_row(row)
-		})
-		.await
-		.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
-	}
+            conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+            Ok(tx)
+        })
+        .await
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+    }
 
     pub async fn withdraw(
         &self,
@@ -262,172 +132,83 @@ impl TransactionsRepository {
                 .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
             let account_id_val = account_id.value();
-
-            // 1. Check current balance
-            let balance_row = conn
-                .query_row_named(
-                    "SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
-                     FROM transactions WHERE account_id = :account_id",
-                    &[("account_id", &account_id_val)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            let current_balance: i64 = balance_row
-                .get("balance_cents")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+            let current_balance = query_balance_cents(&conn, account_id_val)?;
 
             if current_balance < amount_cents {
                 return Err(TransactionError::InsufficientFunds);
             }
 
-            let negative_amount = -amount_cents;
-            let tx_type = TransactionType::Withdrawal.as_str().to_string();
-
-            let out_tx_id: i64 = 0;
-            let out_acc_id: i64 = 0;
-            let out_amount: i64 = 0;
-            let out_type = " ".repeat(20);
-            let out_prev_hash: Option<String> = Some(" ".repeat(64));
-            let out_curr_hash = " ".repeat(64);
-            let out_created_at = OracleTimestamp::default();
-
-            let mut result = conn.execute_named(
-                "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (:account_id, :amount_cents, :tx_type) \
-                 RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                 INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at",
-                &[
-                    ("account_id", &account_id_val),
-                    ("amount_cents", &negative_amount),
-                    ("tx_type", &tx_type),
-                    ("out_tx_id", &out_tx_id),
-                    ("out_acc_id", &out_acc_id),
-                    ("out_amount", &out_amount),
-                    ("out_type", &out_type),
-                    ("out_prev_hash", &out_prev_hash),
-                    ("out_curr_hash", &out_curr_hash),
-                    ("out_created_at", &out_created_at),
-                ],
+            let tx = insert_transaction_record(
+                &conn,
+                account_id_val,
+                -amount_cents,
+                TransactionType::Withdrawal,
             )
             .map_err(|e| {
                 let _ = conn.rollback();
-                TransactionError::DatabaseError(e.to_string())
+                e
             })?;
 
             conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            let row = result
-                .returned_row()
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
-
-            parse_transaction_row(row)
+            Ok(tx)
         })
         .await
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
     }
 
-	pub async fn transfer(
-		&self,
-		from_account_id: AccountID,
-		to_account_id: AccountID,
-		amount_cents: i64,
-	) -> Result<(Transactions, Transactions), TransactionError> {
-		let pool = self.pool.clone();
+    pub async fn transfer(
+        &self,
+        from_account_id: AccountID,
+        to_account_id: AccountID,
+        amount_cents: i64,
+    ) -> Result<(Transactions, Transactions), TransactionError> {
+        let pool = self.pool.clone();
 
-		tokio::task::spawn_blocking(move || {
-			let conn = pool
-				.acquire()
-				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+        tokio::task::spawn_blocking(move || {
+            let conn = pool
+                .acquire()
+                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-			let from_id = from_account_id.value();
-			let to_id = to_account_id.value();
+            let from_id = from_account_id.value();
+            let to_id = to_account_id.value();
 
-			let balance_row = conn
-				.query_row_named(
-					"SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
-                 FROM transactions WHERE account_id = :account_id",
-					&[("account_id", &from_id)],
-				)
-				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+            let sender_balance = query_balance_cents(&conn, from_id)?;
+            if sender_balance < amount_cents {
+                return Err(TransactionError::InsufficientFunds);
+            }
 
-			let sender_balance: i64 = balance_row
-				.get("balance_cents")
-				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+            let tx_out = insert_transaction_record(
+                &conn,
+                from_id,
+                -amount_cents,
+                TransactionType::TransferOut,
+            )
+            .map_err(|e| {
+                let _ = conn.rollback();
+                TransactionError::DatabaseError(format!("Debit failed: {}", e))
+            })?;
 
-			if sender_balance < amount_cents {
-				return Err(TransactionError::InsufficientFunds);
-			}
+            let tx_in = insert_transaction_record(
+                &conn,
+                to_id,
+                amount_cents,
+                TransactionType::TransferIn,
+            )
+            .map_err(|e| {
+                let _ = conn.rollback();
+                TransactionError::DatabaseError(format!("Credit failed: {}", e))
+            })?;
 
-			let debit_amount = -amount_cents;
-			let credit_amount = amount_cents;
-			let type_out = TransactionType::TransferOut.as_str().to_string();
-			let type_in = TransactionType::TransferIn.as_str().to_string();
+            if let Err(e) = conn.commit() {
+                let _ = conn.rollback();
+                return Err(TransactionError::DatabaseError(format!("Commit failed: {}", e)));
+            }
 
-			let sql = "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                   VALUES (:account_id, :amount_cents, :tx_type) \
-                   RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                   INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at";
-
-			let out_tx_id: i64 = 0;
-			let out_acc_id: i64 = 0;
-			let out_amount: i64 = 0;
-			let out_type = " ".repeat(20);
-			let out_prev_hash: Option<String> = Some(" ".repeat(64));
-			let out_curr_hash = " ".repeat(64);
-			let out_created_at = OracleTimestamp::default();
-
-			let mut debit_res = conn.execute_named(
-				sql,
-				&[
-					("account_id", &from_id),
-					("amount_cents", &debit_amount),
-					("tx_type", &type_out),
-					("out_tx_id", &out_tx_id),
-					("out_acc_id", &out_acc_id),
-					("out_amount", &out_amount),
-					("out_type", &out_type),
-					("out_prev_hash", &out_prev_hash),
-					("out_curr_hash", &out_curr_hash),
-					("out_created_at", &out_created_at),
-				],
-			)
-			.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Debit failed: {}", e)) })?;
-			let row_out = debit_res.returned_row()
-				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
-
-			let mut credit_res = conn.execute_named(
-				sql,
-				&[
-					("account_id", &to_id),
-					("amount_cents", &credit_amount),
-					("tx_type", &type_in),
-					("out_tx_id", &out_tx_id),
-					("out_acc_id", &out_acc_id),
-					("out_amount", &out_amount),
-					("out_type", &out_type),
-					("out_prev_hash", &out_prev_hash),
-					("out_curr_hash", &out_curr_hash),
-					("out_created_at", &out_created_at),
-				],
-			)
-			.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Credit failed: {}", e)) })?;
-			let row_in = credit_res.returned_row()
-				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
-
-			// 4. Commit atomic transfer!
-			if let Err(e) = conn.commit() {
-				let _ = conn.rollback();
-				return Err(TransactionError::DatabaseError(format!("Commit failed: {}", e)));
-			}
-
-			let tx_out = parse_transaction_row(row_out)?;
-			let tx_in = parse_transaction_row(row_in)?;
-
-			Ok((tx_out, tx_in))
-		})
-		.await
-		.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
-	}
+            Ok((tx_out, tx_in))
+        })
+        .await
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+    }
 
     pub async fn get_statement(
         &self,
@@ -465,6 +246,114 @@ impl TransactionsRepository {
         .await
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
     }
+}
+
+fn query_balance_cents(
+    conn: &oracledb::Connection,
+    account_id: i64,
+) -> Result<i64, TransactionError> {
+    let row = conn
+        .query_row_named(
+            "SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
+             FROM transactions WHERE account_id = :account_id",
+            &[("account_id", &account_id)],
+        )
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+
+    row.get("balance_cents")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))
+}
+
+fn insert_transaction_record(
+    conn: &oracledb::Connection,
+    account_id: i64,
+    amount_cents: i64,
+    tx_type: TransactionType,
+) -> Result<Transactions, TransactionError> {
+    let tx_type_str = tx_type.as_str().to_string();
+
+    let out_tx_id: i64 = 0;
+    let out_acc_id: i64 = 0;
+    let out_amount: i64 = 0;
+    let out_type = " ".repeat(20);
+    let out_prev_hash: Option<String> = Some(" ".repeat(64));
+    let out_curr_hash = " ".repeat(64);
+    let out_created_at = OracleTimestamp::default();
+
+    let mut result = conn
+        .execute_named(
+            "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
+             VALUES (:account_id, :amount_cents, :tx_type) \
+             RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
+             INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at",
+            &[
+                ("account_id", &account_id),
+                ("amount_cents", &amount_cents),
+                ("tx_type", &tx_type_str),
+                ("out_tx_id", &out_tx_id),
+                ("out_acc_id", &out_acc_id),
+                ("out_amount", &out_amount),
+                ("out_type", &out_type),
+                ("out_prev_hash", &out_prev_hash),
+                ("out_curr_hash", &out_curr_hash),
+                ("out_created_at", &out_created_at),
+            ],
+        )
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+
+    let row = result
+        .returned_row()
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+
+    parse_transaction_row(row)
+}
+
+fn parse_account_row(row: oracledb::Row) -> Result<Accounts, TransactionError> {
+    let id: i64 = row
+        .get("account_id")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let account_number_raw: String = row
+        .get("account_number")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let account_type_raw: String = row
+        .get("account_type")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let user_id_raw: i64 = row
+        .get("user_id")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let status_raw: String = row
+        .get("status")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let balance_cents: i64 = row
+        .get("balance_cents")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let created_at_raw: OracleTimestamp = row
+        .get("created_at")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let updated_at_raw: OracleTimestamp = row
+        .get("updated_at")
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+
+    let created_at = oracle_ts_to_chrono(&created_at_raw)
+        .map_err(TransactionError::DatabaseError)?;
+    let updated_at = oracle_ts_to_chrono(&updated_at_raw)
+        .map_err(TransactionError::DatabaseError)?;
+
+    let account_type = AccountType::from_str(&account_type_raw)
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+    let status = Status::from_str(&status_raw)
+        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+
+    Ok(Accounts {
+        account_id: AccountID::from_db(id),
+        account_number: AccountNumber::from_db(account_number_raw),
+        account_type,
+        user_id: UsersID::from_db(user_id_raw),
+        balance: Balance::from_cents(balance_cents),
+        status,
+        created_at,
+        updated_at,
+    })
 }
 
 fn parse_transaction_row(row: oracledb::Row) -> Result<Transactions, TransactionError> {
