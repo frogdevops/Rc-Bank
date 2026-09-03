@@ -1,0 +1,8 @@
+{
+  "name": "Rc-Bank",
+  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "git clone https://github.com/frogdevops/Rc-Bank.git /workspaces/rust-oracledb"
+}
