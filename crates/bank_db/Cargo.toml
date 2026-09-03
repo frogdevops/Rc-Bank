@@ -8,3 +8,7 @@ bank_domain = { path = "../bank_domain" }
 chrono = { version = "0.4.45", features = ["serde"] }
 oracledb = { git = "https://github.com/frogdevops/rust-oracledb.git", branch = "#12-named-column-lookup" }
 tokio = { version = "1.53.1", features = ["full"] }
+
+[dev-dependencies]
+dotenvy = "0.15"
+tokio = { version = "1.53.1", features = ["full", "test-util"] }

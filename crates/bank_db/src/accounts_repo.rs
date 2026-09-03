@@ -25,12 +25,27 @@ impl AccountsRepository {
             let user_id_val = new_account.user_id.value();
             let account_type_str = new_account.account_type.as_str();
 
+            let out_id: i64 = 0;
+            let out_account_number = " ".repeat(20);
+            let out_account_type = " ".repeat(20);
+            let out_status = " ".repeat(20);
+            let out_created_at = OracleTimestamp::default();
+            let out_updated_at = OracleTimestamp::default();
+
             let mut results = conn.execute_named(
                 "INSERT INTO accounts (account_number, account_type, user_id, status) \
-                 VALUES (generate_account_number(), :account_type, :user_id, 'ACTIVE')",
+                 VALUES (generate_account_number(), :account_type, :user_id, 'ACTIVE') \
+                 RETURNING account_id, account_number, account_type, status, created_at, updated_at \
+                 INTO :out_id, :out_account_number, :out_account_type, :out_status, :out_created_at, :out_updated_at",
                 &[
                     ("account_type", &account_type_str),
                     ("user_id", &user_id_val),
+                    ("out_id", &out_id),
+                    ("out_account_number", &out_account_number),
+                    ("out_account_type", &out_account_type),
+                    ("out_status", &out_status),
+                    ("out_created_at", &out_created_at),
+                    ("out_updated_at", &out_updated_at),
                 ],
             )
             .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
@@ -40,22 +55,22 @@ impl AccountsRepository {
 	        let rows = results.returned_row()
 		        .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let account_id: i64 = rows
-                .get("account_id")
+                .get("out_id")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let account_number_raw: String = rows
-                .get("account_number")
+                .get("out_account_number")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let account_type_raw: String = rows
-                .get("account_type")
+                .get("out_account_type")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let status_raw: String = rows
-                .get("status")
+                .get("out_status")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let created_at_raw: OracleTimestamp = rows
-                .get("created_at")
+                .get("out_created_at")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
             let updated_at_raw: OracleTimestamp = rows
-                .get("updated_at")
+                .get("out_updated_at")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
 
             let created_at = oracle_ts_to_chrono(&created_at_raw)

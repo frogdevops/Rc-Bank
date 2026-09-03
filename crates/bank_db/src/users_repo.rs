@@ -21,9 +21,15 @@ impl UsersRepository {
                 .acquire()
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
-           let mut result =  conn.execute_named(
+            let out_id: i64 = 0;
+            let out_created_at = OracleTimestamp::default();
+            let out_updated_at = OracleTimestamp::default();
+
+            let mut result = conn.execute_named(
                 "INSERT INTO users (first_name, middle_name, last_name, user_name, password_hash, email) \
-                 VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email)",
+                 VALUES (:first_name, :middle_name, :last_name, :user_name, :password_hash, :email) \
+                 RETURNING user_id, created_at, updated_at \
+                 INTO :out_id, :out_created_at, :out_updated_at",
                 &[
                     ("first_name", &new_user.name.first_name),
                     ("middle_name", &new_user.name.middle_name),
@@ -31,6 +37,9 @@ impl UsersRepository {
                     ("user_name", &new_user.user_name),
                     ("password_hash", &new_user.password.hash_str()),
                     ("email", &new_user.email.as_ref().map(|e| e.as_str())),
+                    ("out_id", &out_id),
+                    ("out_created_at", &out_created_at),
+                    ("out_updated_at", &out_updated_at),
                 ],
             )
             .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
@@ -38,16 +47,16 @@ impl UsersRepository {
             conn.commit()
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
-           let rows = result.returned_row()
-	           .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
+            let rows = result.returned_row()
+                .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let id: i64 = rows
-                .get("user_id")
+                .get("out_id")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let created_at_raw: OracleTimestamp = rows
-                .get("created_at")
+                .get("out_created_at")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
             let updated_at_raw: OracleTimestamp = rows
-                .get("updated_at")
+                .get("out_updated_at")
                 .map_err(|e| UsersError::DatabaseError(e.to_string()))?;
 
             let created_at = oracle_ts_to_chrono(&created_at_raw)

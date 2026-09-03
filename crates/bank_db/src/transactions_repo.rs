@@ -204,18 +204,37 @@ impl TransactionsRepository {
 			let account_id_val = account_id.value();
 			let tx_type = TransactionType::Deposit.as_str().to_string();
 
+			let out_tx_id: i64 = 0;
+			let out_acc_id: i64 = 0;
+			let out_amount: i64 = 0;
+			let out_type = " ".repeat(20);
+			let out_prev_hash: Option<String> = Some(" ".repeat(64));
+			let out_curr_hash = " ".repeat(64);
+			let out_created_at = OracleTimestamp::default();
+
 			// 🚀 ATOMIC INSERT + RETURN IN ONE SINGLE HOP:
-			let mut result = conn.execute(
+			let mut result = conn.execute_named(
 				"INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-             VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3) \
-             RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-             INTO :1, :2, :3, :4, :5, :6, :7",
-				&[&account_id_val, &amount_cents, &tx_type],
+                 VALUES (:account_id, :amount_cents, :tx_type) \
+                 RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
+                 INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at",
+				&[
+					("account_id", &account_id_val),
+					("amount_cents", &amount_cents),
+					("tx_type", &tx_type),
+					("out_tx_id", &out_tx_id),
+					("out_acc_id", &out_acc_id),
+					("out_amount", &out_amount),
+					("out_type", &out_type),
+					("out_prev_hash", &out_prev_hash),
+					("out_curr_hash", &out_curr_hash),
+					("out_created_at", &out_created_at),
+				],
 			)
-				.map_err(|e| {
-					let _ = conn.rollback();
-					TransactionError::DatabaseError(e.to_string())
-				})?;
+			.map_err(|e| {
+				let _ = conn.rollback();
+				TransactionError::DatabaseError(e.to_string())
+			})?;
 
 			conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
@@ -226,8 +245,8 @@ impl TransactionsRepository {
 
 			parse_transaction_row(row)
 		})
-			.await
-			.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+		.await
+		.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
 	}
 
     pub async fn withdraw(
@@ -264,10 +283,31 @@ impl TransactionsRepository {
             let negative_amount = -amount_cents;
             let tx_type = TransactionType::Withdrawal.as_str().to_string();
 
-            conn.execute(
+            let out_tx_id: i64 = 0;
+            let out_acc_id: i64 = 0;
+            let out_amount: i64 = 0;
+            let out_type = " ".repeat(20);
+            let out_prev_hash: Option<String> = Some(" ".repeat(64));
+            let out_curr_hash = " ".repeat(64);
+            let out_created_at = OracleTimestamp::default();
+
+            let mut result = conn.execute_named(
                 "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
-                &[&account_id_val, &negative_amount, &tx_type],
+                 VALUES (:account_id, :amount_cents, :tx_type) \
+                 RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
+                 INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at",
+                &[
+                    ("account_id", &account_id_val),
+                    ("amount_cents", &negative_amount),
+                    ("tx_type", &tx_type),
+                    ("out_tx_id", &out_tx_id),
+                    ("out_acc_id", &out_acc_id),
+                    ("out_amount", &out_amount),
+                    ("out_type", &out_type),
+                    ("out_prev_hash", &out_prev_hash),
+                    ("out_curr_hash", &out_curr_hash),
+                    ("out_created_at", &out_created_at),
+                ],
             )
             .map_err(|e| {
                 let _ = conn.rollback();
@@ -276,13 +316,8 @@ impl TransactionsRepository {
 
             conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let row = conn
-                .query_row_named(
-                    "SELECT transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                     FROM transactions WHERE account_id = :account_id \
-                     ORDER BY transaction_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[("account_id", &account_id_val)],
-                )
+            let row = result
+                .returned_row()
                 .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
             parse_transaction_row(row)
@@ -329,17 +364,53 @@ impl TransactionsRepository {
 			let type_in = TransactionType::TransferIn.as_str().to_string();
 
 			let sql = "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                   VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3) \
+                   VALUES (:account_id, :amount_cents, :tx_type) \
                    RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                   INTO :1, :2, :3, :4, :5, :6, :7";
+                   INTO :out_tx_id, :out_acc_id, :out_amount, :out_type, :out_prev_hash, :out_curr_hash, :out_created_at";
 
-			let mut debit_res = conn.execute(sql, &[&from_id, &debit_amount, &type_out])
-				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Debit failed: {}", e)) })?;
+			let out_tx_id: i64 = 0;
+			let out_acc_id: i64 = 0;
+			let out_amount: i64 = 0;
+			let out_type = " ".repeat(20);
+			let out_prev_hash: Option<String> = Some(" ".repeat(64));
+			let out_curr_hash = " ".repeat(64);
+			let out_created_at = OracleTimestamp::default();
+
+			let mut debit_res = conn.execute_named(
+				sql,
+				&[
+					("account_id", &from_id),
+					("amount_cents", &debit_amount),
+					("tx_type", &type_out),
+					("out_tx_id", &out_tx_id),
+					("out_acc_id", &out_acc_id),
+					("out_amount", &out_amount),
+					("out_type", &out_type),
+					("out_prev_hash", &out_prev_hash),
+					("out_curr_hash", &out_curr_hash),
+					("out_created_at", &out_created_at),
+				],
+			)
+			.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Debit failed: {}", e)) })?;
 			let row_out = debit_res.returned_row()
 				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
 
-			let mut credit_res = conn.execute(sql, &[&to_id, &credit_amount, &type_in])
-				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Credit failed: {}", e)) })?;
+			let mut credit_res = conn.execute_named(
+				sql,
+				&[
+					("account_id", &to_id),
+					("amount_cents", &credit_amount),
+					("tx_type", &type_in),
+					("out_tx_id", &out_tx_id),
+					("out_acc_id", &out_acc_id),
+					("out_amount", &out_amount),
+					("out_type", &out_type),
+					("out_prev_hash", &out_prev_hash),
+					("out_curr_hash", &out_curr_hash),
+					("out_created_at", &out_created_at),
+				],
+			)
+			.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Credit failed: {}", e)) })?;
 			let row_in = credit_res.returned_row()
 				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
 
@@ -354,8 +425,8 @@ impl TransactionsRepository {
 
 			Ok((tx_out, tx_in))
 		})
-			.await
-			.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+		.await
+		.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
 	}
 
     pub async fn get_statement(
@@ -399,24 +470,38 @@ impl TransactionsRepository {
 fn parse_transaction_row(row: oracledb::Row) -> Result<Transactions, TransactionError> {
     let tx_id: i64 = row
         .get("transaction_id")
+        .or_else(|_| row.get("out_tx_id"))
+        .or_else(|_| row.get(0))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let acc_id: i64 = row
         .get("account_id")
+        .or_else(|_| row.get("out_acc_id"))
+        .or_else(|_| row.get(1))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let amount_cents: i64 = row
         .get("amount_cents")
+        .or_else(|_| row.get("out_amount"))
+        .or_else(|_| row.get(2))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let tx_type_raw: String = row
         .get("transaction_type")
+        .or_else(|_| row.get("out_type"))
+        .or_else(|_| row.get(3))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let prev_hash: Option<String> = row
         .get("previous_hash")
+        .or_else(|_| row.get("out_prev_hash"))
+        .or_else(|_| row.get(4))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let curr_hash: String = row
         .get("current_hash")
+        .or_else(|_| row.get("out_curr_hash"))
+        .or_else(|_| row.get(5))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
     let created_at_raw: OracleTimestamp = row
         .get("created_at")
+        .or_else(|_| row.get("out_created_at"))
+        .or_else(|_| row.get(6))
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
     let created_at = oracle_ts_to_chrono(&created_at_raw)
