@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use bank_domain::{AccountError, AccountID, AccountNumber, AccountType, Accounts, Balance, NewAccount, Status, UsersError, UsersID};
+use bank_domain::{AccountError, AccountID, AccountNumber, AccountType, Accounts, Balance, NewAccount, Status , UsersID};
 use oracledb::{OracleTimestamp, Pool};
 use crate::helpers::oracle_ts_to_chrono;
 

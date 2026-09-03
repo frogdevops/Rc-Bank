@@ -292,98 +292,72 @@ impl TransactionsRepository {
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
     }
 
-    pub async fn transfer(
-        &self,
-        from_account_id: AccountID,
-        to_account_id: AccountID,
-        amount_cents: i64,
-    ) -> Result<(Transactions, Transactions), TransactionError> {
-        let pool = self.pool.clone();
+	pub async fn transfer(
+		&self,
+		from_account_id: AccountID,
+		to_account_id: AccountID,
+		amount_cents: i64,
+	) -> Result<(Transactions, Transactions), TransactionError> {
+		let pool = self.pool.clone();
 
-        tokio::task::spawn_blocking(move || {
-            let conn = pool
-                .acquire()
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+		tokio::task::spawn_blocking(move || {
+			let conn = pool
+				.acquire()
+				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let from_id = from_account_id.value();
-            let to_id = to_account_id.value();
+			let from_id = from_account_id.value();
+			let to_id = to_account_id.value();
 
-            // 1. Check sender balance
-            let balance_row = conn
-                .query_row_named(
-                    "SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
-                     FROM transactions WHERE account_id = :account_id",
-                    &[("account_id", &from_id)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			let balance_row = conn
+				.query_row_named(
+					"SELECT NVL(SUM(amount_cents), 0) AS balance_cents \
+                 FROM transactions WHERE account_id = :account_id",
+					&[("account_id", &from_id)],
+				)
+				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let sender_balance: i64 = balance_row
-                .get("balance_cents")
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			let sender_balance: i64 = balance_row
+				.get("balance_cents")
+				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            if sender_balance < amount_cents {
-                return Err(TransactionError::InsufficientFunds);
-            }
+			if sender_balance < amount_cents {
+				return Err(TransactionError::InsufficientFunds);
+			}
 
-            let debit_amount = -amount_cents;
-            let credit_amount = amount_cents;
-            let type_out = TransactionType::TransferOut.as_str().to_string();
-            let type_in = TransactionType::TransferIn.as_str().to_string();
+			let debit_amount = -amount_cents;
+			let credit_amount = amount_cents;
+			let type_out = TransactionType::TransferOut.as_str().to_string();
+			let type_in = TransactionType::TransferIn.as_str().to_string();
 
-            // 2. Debit sender (TRANSFER_OUT)
-            if let Err(e) = conn.execute(
-                "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
-                &[&from_id, &debit_amount, &type_out],
-            ) {
-                let _ = conn.rollback();
-                return Err(TransactionError::DatabaseError(format!("Debit failed: {}", e)));
-            }
+			let sql = "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
+                   VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3) \
+                   RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
+                   INTO :1, :2, :3, :4, :5, :6, :7";
 
-            // 3. Credit recipient (TRANSFER_IN)
-            if let Err(e) = conn.execute(
-                "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
-                &[&to_id, &credit_amount, &type_in],
-            ) {
-                let _ = conn.rollback();
-                return Err(TransactionError::DatabaseError(format!("Credit failed: {}", e)));
-            }
+			let mut debit_res = conn.execute(sql, &[&from_id, &debit_amount, &type_out])
+				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Debit failed: {}", e)) })?;
+			let row_out = debit_res.returned_row()
+				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
 
-            // 4. Commit atomic transfer!
-            if let Err(e) = conn.commit() {
-                let _ = conn.rollback();
-                return Err(TransactionError::DatabaseError(format!("Commit failed: {}", e)));
-            }
+			let mut credit_res = conn.execute(sql, &[&to_id, &credit_amount, &type_in])
+				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(format!("Credit failed: {}", e)) })?;
+			let row_in = credit_res.returned_row()
+				.map_err(|e| { let _ = conn.rollback(); TransactionError::DatabaseError(e.to_string()) })?;
 
-            // 5. Fetch debit record
-            let row_out = conn
-                .query_row_named(
-                    "SELECT transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                     FROM transactions WHERE account_id = :account_id \
-                     ORDER BY transaction_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[("account_id", &from_id)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			// 4. Commit atomic transfer!
+			if let Err(e) = conn.commit() {
+				let _ = conn.rollback();
+				return Err(TransactionError::DatabaseError(format!("Commit failed: {}", e)));
+			}
 
-            // 6. Fetch credit record
-            let row_in = conn
-                .query_row_named(
-                    "SELECT transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                     FROM transactions WHERE account_id = :account_id \
-                     ORDER BY transaction_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[("account_id", &to_id)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			let tx_out = parse_transaction_row(row_out)?;
+			let tx_in = parse_transaction_row(row_in)?;
 
-            let tx_out = parse_transaction_row(row_out)?;
-            let tx_in = parse_transaction_row(row_in)?;
-
-            Ok((tx_out, tx_in))
-        })
-        .await
-        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
-    }
+			Ok((tx_out, tx_in))
+		})
+			.await
+			.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+	}
 
     pub async fn get_statement(
         &self,
