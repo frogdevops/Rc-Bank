@@ -1,9 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
-use bank_domain::{
-    AccountError, AccountID, AccountNumber, AccountType, Accounts, Balance, NewAccount, Status,
-    UsersID,
-};
+use bank_domain::{AccountError, AccountID, AccountNumber, AccountType, Accounts, Balance, NewAccount, Status, UsersError, UsersID};
 use oracledb::{OracleTimestamp, Pool};
 use crate::helpers::oracle_ts_to_chrono;
 
@@ -28,7 +25,7 @@ impl AccountsRepository {
             let user_id_val = new_account.user_id.value();
             let account_type_str = new_account.account_type.as_str();
 
-            conn.execute_named(
+            let mut results = conn.execute_named(
                 "INSERT INTO accounts (account_number, account_type, user_id, status) \
                  VALUES (generate_account_number(), :account_type, :user_id, 'ACTIVE')",
                 &[
@@ -40,33 +37,24 @@ impl AccountsRepository {
 
             conn.commit()
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-
-            let row = conn
-                .query_row_named(
-                    "SELECT account_id, account_number, account_type, user_id, status, created_at, updated_at \
-                     FROM accounts \
-                     WHERE user_id = :user_id \
-                     ORDER BY account_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[("user_id", &user_id_val)],
-                )
-                .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-
-            let account_id: i64 = row
+	        let rows = results.returned_row()
+		        .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
+            let account_id: i64 = rows
                 .get("account_id")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-            let account_number_raw: String = row
+            let account_number_raw: String = rows
                 .get("account_number")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-            let account_type_raw: String = row
+            let account_type_raw: String = rows
                 .get("account_type")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-            let status_raw: String = row
+            let status_raw: String = rows
                 .get("status")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-            let created_at_raw: OracleTimestamp = row
+            let created_at_raw: OracleTimestamp = rows
                 .get("created_at")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
-            let updated_at_raw: OracleTimestamp = row
+            let updated_at_raw: OracleTimestamp = rows
                 .get("updated_at")
                 .map_err(|e| AccountError::DatabaseError(e.to_string()))?;
 
