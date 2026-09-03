@@ -189,47 +189,46 @@ impl TransactionsRepository {
         .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
     }
 
-    pub async fn deposit(
-        &self,
-        account_id: AccountID,
-        amount_cents: i64,
-    ) -> Result<Transactions, TransactionError> {
-        let pool = self.pool.clone();
+	pub async fn deposit(
+		&self,
+		account_id: AccountID,
+		amount_cents: i64,
+	) -> Result<Transactions, TransactionError> {
+		let pool = self.pool.clone();
 
-        tokio::task::spawn_blocking(move || {
-            let conn = pool
-                .acquire()
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+		tokio::task::spawn_blocking(move || {
+			let conn = pool
+				.acquire()
+				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let account_id_val = account_id.value();
-            let tx_type = TransactionType::Deposit.as_str().to_string();
+			let account_id_val = account_id.value();
+			let tx_type = TransactionType::Deposit.as_str().to_string();
 
-            conn.execute(
-                "INSERT INTO transactions (account_id, amount_cents, transaction_type) \
-                 VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3)",
-                &[&account_id_val, &amount_cents, &tx_type],
-            )
-            .map_err(|e| {
-                let _ = conn.rollback();
-                TransactionError::DatabaseError(e.to_string())
-            })?;
+			// 🚀 ATOMIC INSERT + RETURN IN ONE SINGLE HOP:
+			let mut result = conn.execute(
+				"INSERT INTO transactions (account_id, amount_cents, transaction_type) \
+             VALUES (CAST(:1 AS NUMBER(19)), CAST(:2 AS NUMBER(20)), :3) \
+             RETURNING transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
+             INTO :1, :2, :3, :4, :5, :6, :7",
+				&[&account_id_val, &amount_cents, &tx_type],
+			)
+				.map_err(|e| {
+					let _ = conn.rollback();
+					TransactionError::DatabaseError(e.to_string())
+				})?;
 
-            conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			conn.commit().map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            let row = conn
-                .query_row_named(
-                    "SELECT transaction_id, account_id, amount_cents, transaction_type, previous_hash, current_hash, created_at \
-                     FROM transactions WHERE account_id = :account_id \
-                     ORDER BY transaction_id DESC FETCH FIRST 1 ROW ONLY",
-                    &[("account_id", &account_id_val)],
-                )
-                .map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
+			// 🪄 GRAB THE RETURNED TRANSACTION ROW DIRECTLY:
+			let row = result
+				.returned_row()
+				.map_err(|e| TransactionError::DatabaseError(e.to_string()))?;
 
-            parse_transaction_row(row)
-        })
-        .await
-        .map_err(|e| TransactionError::DatabaseError(e.to_string()))?
-    }
+			parse_transaction_row(row)
+		})
+			.await
+			.map_err(|e| TransactionError::DatabaseError(e.to_string()))?
+	}
 
     pub async fn withdraw(
         &self,
