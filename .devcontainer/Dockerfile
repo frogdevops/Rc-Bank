@@ -6,7 +6,7 @@ RUN pacman -Syu --noconfirm && \
     docker-compose \
     rustup \
     clang \
-    cmake \
+    cmake
 
 RUN groupmod -g 800 docker && \
     useradd -m -s /bin/bash -G docker rc && \
