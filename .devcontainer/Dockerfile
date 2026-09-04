@@ -7,8 +7,8 @@ RUN pacman -Syu --noconfirm && \
     rustup \
     clang \
     cmake \
-    neovim
-RUN groupadd -g 800 docker && \
+
+RUN groupmod -g 800 docker && \
     useradd -m -s /bin/bash -G docker rc && \
     echo "rc ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/rc
 USER rc
