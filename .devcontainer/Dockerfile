@@ -6,10 +6,15 @@ RUN pacman -Syu --noconfirm && \
     docker-compose \
     rustup \
     clang \
-    cmake
+    cmake \
+    github-cli \
+    openssh \
+    neovim
 
 RUN groupmod -g 800 docker && \
     useradd -m -s /bin/bash -G docker rc && \
-    echo "rc ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/rc
+    echo "rc ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/rc && \
+    ssh-keygen -A
+
 USER rc
 RUN rustup default stable
