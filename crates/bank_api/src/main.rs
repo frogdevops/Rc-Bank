@@ -77,9 +77,7 @@ async fn main() {
     let oracle_port = std::env::var("PORT").expect("PORT not found");
     let oracle_host = std::env::var("HOST").expect("HOST not found");
     let service_name = std::env::var("SERVICE_NAME").expect("SERVICE_NAME not found");
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "default_secure_bank_jwt_secret_key_32_bytes!".to_string())
-        .into_bytes();
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap().into_bytes();
 
     let pool = match create_oracle_pool(&oracle_host, &oracle_port, &service_name, &user, &password) {
         Ok(p) => {
