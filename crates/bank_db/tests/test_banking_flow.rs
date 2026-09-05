@@ -27,29 +27,32 @@ use bank_db::{
 // Test infrastructure
 // ─────────────────────────────────────────────────────────────────────────────
 
+static SHARED_POOL: std::sync::OnceLock<Arc<oracledb::Pool>> = std::sync::OnceLock::new();
+
 /// Loads .env from the workspace root and builds a shared pool for all tests.
 fn setup_pool() -> Arc<oracledb::Pool> {
-    dotenvy::from_path("../../.env").ok();
-    dotenvy::dotenv().ok(); // fallback: try working directory
+    SHARED_POOL
+        .get_or_init(|| {
+            dotenvy::from_path("../../.env").ok();
+            dotenvy::dotenv().ok(); // fallback: try working directory
 
-    let host     = std::env::var("HOST").unwrap_or_else(|_| "localhost".into());
-    let port     = std::env::var("PORT").unwrap_or_else(|_| "1521".into());
-    let svc      = std::env::var("SERVICE_NAME").expect("SERVICE_NAME must be set");
-    let user     = std::env::var("ORACLE_USER").expect("ORACLE_USER must be set");
-    let password = std::env::var("DB_PASSWORD").expect("DB_PASSWORD must be set");
+            let host = std::env::var("HOST").unwrap_or_else(|_| "localhost".into());
+            let port = std::env::var("PORT").unwrap_or_else(|_| "1521".into());
+            let svc = std::env::var("SERVICE_NAME").expect("SERVICE_NAME must be set");
+            let user = std::env::var("ORACLE_USER").expect("ORACLE_USER must be set");
+            let password = std::env::var("DB_PASSWORD").expect("DB_PASSWORD must be set");
 
-    let pool = create_oracle_pool(&host, &port, &svc, &user, &password)
-        .expect("Failed to create Oracle pool — is Docker running?");
-    Arc::new(pool)
+            let pool = create_oracle_pool(&host, &port, &svc, &user, &password)
+                .expect("Failed to create Oracle pool — is Docker running?");
+            Arc::new(pool)
+        })
+        .clone()
 }
 
-/// Generates a unique test username using the current Unix timestamp (nanosecond precision).
+/// Generates a unique test username using UUID.
 fn unique_username(prefix: &str) -> String {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
-    format!("{}_{}", prefix, ts)
+    let id = uuid::Uuid::new_v4().to_string();
+    format!("{}_{}", prefix, &id[..8])
 }
 
 /// Deletes test data by user_name to keep the DB clean after each test.

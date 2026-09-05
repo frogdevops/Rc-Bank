@@ -51,7 +51,10 @@ impl TransactionsRepository {
                      GROUP BY a.account_id, a.account_number, a.account_type, a.user_id, a.status, a.created_at, a.updated_at",
                     &[("account_id", &account_id_val)],
                 )
-                .map_err(|_| TransactionError::AccountNotFound)?;
+                .map_err(|e| match e.kind() {
+                    oracledb::ErrorKind::NoDataFound => TransactionError::AccountNotFound,
+                    _ => TransactionError::DatabaseError(e.to_string()),
+                })?;
 
             parse_account_row(row)
         })
@@ -81,7 +84,10 @@ impl TransactionsRepository {
                      GROUP BY a.account_id, a.account_number, a.account_type, a.user_id, a.status, a.created_at, a.updated_at",
                     &[("account_number", &acc_num_str)],
                 )
-                .map_err(|_| TransactionError::AccountNotFound)?;
+                .map_err(|e| match e.kind() {
+                    oracledb::ErrorKind::NoDataFound => TransactionError::AccountNotFound,
+                    _ => TransactionError::DatabaseError(e.to_string()),
+                })?;
 
             parse_account_row(row)
         })

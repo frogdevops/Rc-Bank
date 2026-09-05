@@ -11,7 +11,9 @@ pub fn create_oracle_pool(
     let pool_config = PoolConfig::default()
         .set_connect_string(&connect_string)
         .map_err(|e| format!("OracleDB config error: {:?}", e))?
-        .set_credentials(user, password);
+        .set_credentials(user, password)
+        .set_min_connections(1)
+        .set_max_connections(10);
 
     oracledb::create_pool(pool_config).map_err(|e| format!("Pool creation error: {:?}", e))
 }

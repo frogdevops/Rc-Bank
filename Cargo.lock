@@ -217,6 +217,7 @@ dependencies = [
  "dotenvy",
  "oracledb",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
