@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::{AccountID, AccountNumber, UsersID, Transactions};
+use crate::{AccountID, AccountNumber, AccountType, Accounts, Transactions, UsersID};
 
 /// The command payload published to NATS by the API layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +98,45 @@ impl MoneyResult {
             correlation_id,
             success: false,
             transaction: None,
+            error_message: Some(error_message.into()),
+        }
+    }
+}
+
+/// The command payload published to NATS for account creation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAccountCommand {
+    pub correlation_id: String,
+    pub reply_to: Option<String>,
+    pub user_id: UsersID,
+    pub account_type: AccountType,
+    pub created_at: DateTime<Utc>,
+}
+
+/// The result payload replied by the NATS worker for account creation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAccountResult {
+    pub correlation_id: String,
+    pub success: bool,
+    pub account: Option<Accounts>,
+    pub error_message: Option<String>,
+}
+
+impl CreateAccountResult {
+    pub fn ok(correlation_id: String, account: Accounts) -> Self {
+        Self {
+            correlation_id,
+            success: true,
+            account: Some(account),
+            error_message: None,
+        }
+    }
+
+    pub fn err(correlation_id: String, error_message: impl Into<String>) -> Self {
+        Self {
+            correlation_id,
+            success: false,
+            account: None,
             error_message: Some(error_message.into()),
         }
     }

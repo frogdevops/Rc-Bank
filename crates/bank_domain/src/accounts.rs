@@ -103,7 +103,7 @@ impl FromStr for Status {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Balance(i64);
 
 impl Balance {
@@ -120,7 +120,7 @@ impl Balance {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Accounts {
     pub account_id: AccountID,
     pub account_number: AccountNumber,

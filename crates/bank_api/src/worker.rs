@@ -3,8 +3,11 @@ use std::time::Duration;
 use futures::StreamExt;
 use async_nats::jetstream::{self, AckKind};
 use async_nats::jetstream::consumer::pull;
-use bank_domain::{AccountID, AccountNumber, Amount, DepositCommand, MoneyResult, TransferCommand, TransferResult, WithdrawCommand};
-use crate::services::TransactionsService;
+use bank_domain::{
+    AccountID, AccountNumber, Amount, CreateAccountCommand, CreateAccountResult, DepositCommand,
+    MoneyResult, TransferCommand, TransferResult, WithdrawCommand,
+};
+use crate::services::{AccountsService, TransactionsService};
 
 /// Creates a JetStream durable pull consumer for the given stream and consumer name.
 async fn make_pull_consumer(
@@ -321,6 +324,91 @@ async fn send_money_reply(nats: &async_nats::Client, target: &Option<String>, pa
         if let Ok(bytes) = serde_json::to_vec(payload) {
             if let Err(e) = nats.publish(subject.clone(), bytes.into()).await {
                 eprintln!("❌ [Money Worker] Failed to send reply: {:?}", e);
+            }
+        }
+    }
+}
+
+/// Starts the JetStream durable pull consumer worker for account creation.
+///
+/// Listens on stream `BANK_ACCOUNTS`, consumer `account_worker`.
+pub async fn start_account_worker(
+    nats_client: async_nats::Client,
+    account_service: Arc<AccountsService>,
+) -> Result<(), async_nats::Error> {
+    let consumer = make_pull_consumer(&nats_client, "BANK_ACCOUNTS", "account_worker").await?;
+    let mut messages = consumer.messages().await?;
+
+    println!(" [NATS Worker] Account worker ready — durable consumer 'account_worker' on BANK_ACCOUNTS");
+
+    while let Some(msg_result) = messages.next().await {
+        let msg = match msg_result {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("❌ [Account Worker] Message stream error: {:?}", e);
+                continue;
+            }
+        };
+
+        let account_service = account_service.clone();
+        let nats = nats_client.clone();
+
+        tokio::spawn(async move {
+            let command: CreateAccountCommand = match serde_json::from_slice(&msg.payload) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    eprintln!("❌ [Account Worker] Malformed payload, terminating: {:?}", e);
+                    if let Some(reply) = &msg.reply {
+                        let err_res = CreateAccountResult::err("UNKNOWN".to_string(), format!("Invalid payload: {}", e));
+                        if let Ok(bytes) = serde_json::to_vec(&err_res) {
+                            let _ = nats.publish(reply.clone(), bytes.into()).await;
+                        }
+                    }
+                    let _ = msg.ack_with(AckKind::Term).await;
+                    return;
+                }
+            };
+
+            let cid = command.correlation_id.clone();
+            println!(" [Account Worker] [CID: {}] user:{} type:{:?}", cid, command.user_id.value(), command.account_type);
+
+            let reply_target = command.reply_to.clone()
+                .or_else(|| msg.reply.as_ref().map(|s| s.to_string()));
+
+            let result = account_service
+                .create_account(command.user_id, command.account_type)
+                .await;
+
+            match result {
+                Ok(acc) => {
+                    println!(" [Account Worker] ✅ [CID: {}] acc_id:{} acc_num:{}", cid, acc.account_id.value(), acc.account_number);
+                    let response = CreateAccountResult::ok(cid, acc);
+                    send_account_reply(&nats, &reply_target, &response).await;
+                    let _ = msg.ack().await;
+                }
+                Err(e) => {
+                    let err_str = format!("{:?}", e);
+                    eprintln!("⚠️ [Account Worker] [CID: {}] rejected: {}", cid, err_str);
+                    let response = CreateAccountResult::err(cid, &err_str);
+                    send_account_reply(&nats, &reply_target, &response).await;
+                    if is_transient_error(&err_str) {
+                        let _ = msg.ack_with(AckKind::Nak(Some(Duration::from_secs(2)))).await;
+                    } else {
+                        let _ = msg.ack().await;
+                    }
+                }
+            }
+        });
+    }
+
+    Ok(())
+}
+
+async fn send_account_reply(nats: &async_nats::Client, target: &Option<String>, payload: &CreateAccountResult) {
+    if let Some(subject) = target {
+        if let Ok(bytes) = serde_json::to_vec(payload) {
+            if let Err(e) = nats.publish(subject.clone(), bytes.into()).await {
+                eprintln!("❌ [Account Worker] Failed to send reply: {:?}", e);
             }
         }
     }

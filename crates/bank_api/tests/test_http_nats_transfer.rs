@@ -103,7 +103,6 @@ async fn test_transfer_handler_via_nats_worker() {
 
     let state = AppState {
         user_service: users_service.clone(),
-        account_service: accounts_service.clone(),
         auth_service: auth_service.clone(),
         transactions_service: transactions_service.clone(),
         nats: nats_client,

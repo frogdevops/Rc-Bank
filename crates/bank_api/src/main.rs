@@ -22,7 +22,7 @@ use crate::handlers::{
 };
 use crate::services::{AccountsService, AuthService, TransactionsService, UsersService};
 use crate::state::AppState;
-use crate::worker::{start_deposit_worker, start_transfer_worker, start_withdraw_worker};
+use crate::worker::{start_account_worker, start_deposit_worker, start_transfer_worker, start_withdraw_worker};
 use crate::nats::{connect_nats, ensure_stream};
 
 async fn health_check() -> impl IntoResponse {
@@ -74,9 +74,16 @@ fn create_app(pool: Pool, nats_client: async_nats::Client, jwt_secret: Vec<u8>) 
         }
     });
 
+    let worker_nats = nats_client.clone();
+    let worker_acc = account_service.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_account_worker(worker_nats, worker_acc).await {
+            eprintln!("❌ Failed to start NATS account worker: {:?}", e);
+        }
+    });
+
     let state = AppState {
         user_service,
-        account_service,
         auth_service,
         transactions_service,
         nats: nats_client,
@@ -140,6 +147,9 @@ async fn main() {
     }
     if let Err(e) = ensure_stream(&nats_client, "BANK_WITHDRAWALS", vec!["bank.withdrawals".into()]).await {
         eprintln!("Failed to ensure BANK_WITHDRAWALS stream: {:?}", e);
+    }
+    if let Err(e) = ensure_stream(&nats_client, "BANK_ACCOUNTS", vec!["bank.accounts.create".into()]).await {
+        eprintln!("Failed to ensure BANK_ACCOUNTS stream: {:?}", e);
     }
 
     let app = create_app(pool, nats_client, jwt_secret);
