@@ -2,6 +2,7 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use crate::errors::UsersError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +79,7 @@ impl Name {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UsersID(i64);
 
 impl UsersID {

@@ -79,7 +79,7 @@ impl Amount {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transactions {
     pub transaction_id: TransactionID,
     pub account_id: AccountID,

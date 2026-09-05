@@ -1,8 +1,10 @@
 mod extractors;
 mod handlers;
+mod nats;
 mod response;
 mod services;
 mod state;
+mod worker;
 
 use std::sync::Arc;
 use axum::response::IntoResponse;
@@ -20,6 +22,8 @@ use crate::handlers::{
 };
 use crate::services::{AccountsService, AuthService, TransactionsService, UsersService};
 use crate::state::AppState;
+use crate::worker::{start_deposit_worker, start_transfer_worker, start_withdraw_worker};
+use crate::nats::{connect_nats, ensure_stream};
 
 async fn health_check() -> impl IntoResponse {
     Json(json!({
@@ -28,7 +32,7 @@ async fn health_check() -> impl IntoResponse {
     }))
 }
 
-fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
+fn create_app(pool: Pool, nats_client: async_nats::Client, jwt_secret: Vec<u8>) -> Router {
     let pool_arc = Arc::new(pool);
 
     let users_repo = UsersRepository::new(pool_arc.clone());
@@ -45,11 +49,37 @@ fn create_app(pool: Pool, jwt_secret: Vec<u8>) -> Router {
     ));
     let transactions_service = Arc::new(TransactionsService::new(transactions_repo));
 
+    // Spawn the background NATS worker for asynchronous transaction execution
+    let worker_nats = nats_client.clone();
+    let worker_tx = transactions_service.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_transfer_worker(worker_nats, worker_tx).await {
+            eprintln!("❌ Failed to start NATS transfer worker: {:?}", e);
+        }
+    });
+
+    let worker_nats = nats_client.clone();
+    let worker_tx = transactions_service.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_deposit_worker(worker_nats, worker_tx).await {
+            eprintln!("❌ Failed to start NATS deposit worker: {:?}", e);
+        }
+    });
+
+    let worker_nats = nats_client.clone();
+    let worker_tx = transactions_service.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_withdraw_worker(worker_nats, worker_tx).await {
+            eprintln!("❌ Failed to start NATS withdraw worker: {:?}", e);
+        }
+    });
+
     let state = AppState {
         user_service,
         account_service,
         auth_service,
         transactions_service,
+        nats: nats_client,
         jwt_secret,
     };
 
@@ -90,7 +120,29 @@ async fn main() {
         }
     };
 
-    let app = create_app(pool, jwt_secret);
+    let nats_url = std::env::var("NATS_URL").unwrap_or_else(|_| "127.0.0.1:4222".to_string());
+    let nats_client = match connect_nats(&nats_url).await {
+        Ok(c) => {
+            println!("Connected to NATS on {}", nats_url);
+            c
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to NATS: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(e) = ensure_stream(&nats_client, "BANK_TRANSFERS", vec!["bank.transfers".into()]).await {
+        eprintln!("Failed to ensure BANK_TRANSFERS stream: {:?}", e);
+    }
+    if let Err(e) = ensure_stream(&nats_client, "BANK_DEPOSITS", vec!["bank.deposits".into()]).await {
+        eprintln!("Failed to ensure BANK_DEPOSITS stream: {:?}", e);
+    }
+    if let Err(e) = ensure_stream(&nats_client, "BANK_WITHDRAWALS", vec!["bank.withdrawals".into()]).await {
+        eprintln!("Failed to ensure BANK_WITHDRAWALS stream: {:?}", e);
+    }
+
+    let app = create_app(pool, nats_client, jwt_secret);
 
     let host = std::env::var("APP_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("APP_PORT").unwrap_or_else(|_| "3000".to_string());

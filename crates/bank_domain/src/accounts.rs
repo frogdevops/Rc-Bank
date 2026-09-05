@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::errors::AccountError;
 use crate::users::UsersID;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AccountID(i64);
 
 impl AccountID {

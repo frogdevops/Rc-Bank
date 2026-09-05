@@ -4,8 +4,10 @@ use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use bank_domain::{
-    AccountID, AccountNumber, Amount, Balance, TransactionError, TransactionType, Transactions,
+    AccountID, AccountNumber, Amount, Balance, DepositCommand, MoneyResult, TransactionError,
+    TransactionType, Transactions, TransferCommand, TransferResult, WithdrawCommand,
 };
+use futures::StreamExt;
 use crate::extractors::AuthUser;
 use crate::response::{ApiResponse, HttpError, WebError};
 use crate::state::AppState;
@@ -89,13 +91,67 @@ pub async fn deposit(
     Path(account_id): Path<i64>,
     Json(req): Json<DepositRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<TransactionResponse>>), HttpError<TransactionError>> {
-    let amount = Amount::new(req.amount_cents)?;
-    let tx = state
-        .transactions_service
-        .deposit(auth.user_id, AccountID::from_db(account_id), amount)
-        .await?;
+    // 1. Fast-fail input validation
+    Amount::new(req.amount_cents)?;
 
-    Ok(ApiResponse::created(TransactionResponse::from(tx)))
+    // 2. Setup dynamic reply inbox and correlation ID
+    let correlation_id = uuid::Uuid::new_v4().to_string();
+    let inbox = state.nats.new_inbox();
+    let mut reply_sub = state
+        .nats
+        .subscribe(inbox.clone())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS subscribe error: {}", e))))?;
+
+    // 3. Publish DepositCommand to NATS
+    let command = DepositCommand {
+        correlation_id,
+        reply_to: Some(inbox),
+        user_id: auth.user_id,
+        account_id: AccountID::from_db(account_id),
+        amount_cents: req.amount_cents,
+        created_at: Utc::now(),
+    };
+
+    let payload = serde_json::to_vec(&command)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Payload error: {}", e))))?;
+
+    state
+        .nats
+        .publish("bank.deposits", payload.into())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS publish error: {}", e))))?;
+
+    // 4. Non-blocking await for Worker response with timeout
+    let reply_msg = tokio::time::timeout(tokio::time::Duration::from_secs(5), reply_sub.next())
+        .await
+        .map_err(|_| HttpError(TransactionError::DatabaseError("Deposit timed out waiting for worker".into())))?
+        .ok_or_else(|| HttpError(TransactionError::DatabaseError("NATS reply channel closed".into())))?;
+
+    let result: MoneyResult = serde_json::from_slice(&reply_msg.payload)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Deserialization error: {}", e))))?;
+
+    if result.success {
+        let tx = result.transaction.ok_or_else(|| {
+            HttpError(TransactionError::DatabaseError("Missing transaction in result".into()))
+        })?;
+        Ok(ApiResponse::created(TransactionResponse::from(tx)))
+    } else {
+        let err = map_money_error(result.error_message.as_deref());
+        Err(HttpError(err))
+    }
+}
+
+/// Maps a stringified error from a MoneyResult back to a typed TransactionError.
+fn map_money_error(err_msg: Option<&str>) -> TransactionError {
+    match err_msg {
+        Some(s) if s.contains("InsufficientFunds") => TransactionError::InsufficientFunds,
+        Some(s) if s.contains("AccountNotActive") => TransactionError::AccountNotActive,
+        Some(s) if s.contains("AccountNotFound") => TransactionError::AccountNotFound,
+        Some(s) if s.contains("UnauthorizedAccountAccess") => TransactionError::UnauthorizedAccountAccess,
+        Some(s) => TransactionError::DatabaseError(s.to_string()),
+        None => TransactionError::DatabaseError("Unknown worker error".to_string()),
+    }
 }
 
 pub async fn withdraw(
@@ -104,13 +160,55 @@ pub async fn withdraw(
     Path(account_id): Path<i64>,
     Json(req): Json<WithdrawRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<TransactionResponse>>), HttpError<TransactionError>> {
-    let amount = Amount::new(req.amount_cents)?;
-    let tx = state
-        .transactions_service
-        .withdraw(auth.user_id, AccountID::from_db(account_id), amount)
-        .await?;
+    // 1. Fast-fail input validation
+    Amount::new(req.amount_cents)?;
 
-    Ok(ApiResponse::created(TransactionResponse::from(tx)))
+    // 2. Setup dynamic reply inbox and correlation ID
+    let correlation_id = uuid::Uuid::new_v4().to_string();
+    let inbox = state.nats.new_inbox();
+    let mut reply_sub = state
+        .nats
+        .subscribe(inbox.clone())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS subscribe error: {}", e))))?;
+
+    // 3. Publish WithdrawCommand to NATS
+    let command = WithdrawCommand {
+        correlation_id,
+        reply_to: Some(inbox),
+        user_id: auth.user_id,
+        account_id: AccountID::from_db(account_id),
+        amount_cents: req.amount_cents,
+        created_at: Utc::now(),
+    };
+
+    let payload = serde_json::to_vec(&command)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Payload error: {}", e))))?;
+
+    state
+        .nats
+        .publish("bank.withdrawals", payload.into())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS publish error: {}", e))))?;
+
+    // 4. Non-blocking await for Worker response with timeout
+    let reply_msg = tokio::time::timeout(tokio::time::Duration::from_secs(5), reply_sub.next())
+        .await
+        .map_err(|_| HttpError(TransactionError::DatabaseError("Withdraw timed out waiting for worker".into())))?
+        .ok_or_else(|| HttpError(TransactionError::DatabaseError("NATS reply channel closed".into())))?;
+
+    let result: MoneyResult = serde_json::from_slice(&reply_msg.payload)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Deserialization error: {}", e))))?;
+
+    if result.success {
+        let tx = result.transaction.ok_or_else(|| {
+            HttpError(TransactionError::DatabaseError("Missing transaction in result".into()))
+        })?;
+        Ok(ApiResponse::created(TransactionResponse::from(tx)))
+    } else {
+        let err = map_money_error(result.error_message.as_deref());
+        Err(HttpError(err))
+    }
 }
 
 pub async fn transfer(
@@ -118,22 +216,72 @@ pub async fn transfer(
     auth: AuthUser,
     Json(req): Json<TransferRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<TransferResponse>>), HttpError<TransactionError>> {
-    let amount = Amount::new(req.amount_cents)?;
-    let target_account_num = AccountNumber::from_db(req.to_account_number);
-    let (tx_out, tx_in) = state
-        .transactions_service
-        .transfer(
-            auth.user_id,
-            AccountID::from_db(req.from_account_id),
-            target_account_num,
-            amount,
-        )
-        .await?;
+    // 1. Fast-fail input validation
+    Amount::new(req.amount_cents)?;
 
-    Ok(ApiResponse::created(TransferResponse {
-        debit_transaction: TransactionResponse::from(tx_out),
-        credit_transaction: TransactionResponse::from(tx_in),
-    }))
+    // 2. Setup dynamic reply inbox and correlation ID
+    let correlation_id = uuid::Uuid::new_v4().to_string();
+    let inbox = state.nats.new_inbox();
+    let mut reply_sub = state
+        .nats
+        .subscribe(inbox.clone())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS subscribe error: {}", e))))?;
+
+    // 3. Publish TransferCommand to NATS
+    let command = TransferCommand {
+        correlation_id,
+        reply_to: Some(inbox),
+        user_id: auth.user_id,
+        from_account_id: AccountID::from_db(req.from_account_id),
+        to_account_number: AccountNumber::from_db(req.to_account_number),
+        amount_cents: req.amount_cents,
+        created_at: Utc::now(),
+    };
+
+    let payload = serde_json::to_vec(&command)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Payload error: {}", e))))?;
+
+    state
+        .nats
+        .publish("bank.transfers", payload.into())
+        .await
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("NATS publish error: {}", e))))?;
+
+    // 4. Non-blocking await for Worker response with timeout
+    let reply_msg = tokio::time::timeout(tokio::time::Duration::from_secs(5), reply_sub.next())
+        .await
+        .map_err(|_| HttpError(TransactionError::DatabaseError("Transfer timed out waiting for worker".into())))?
+        .ok_or_else(|| HttpError(TransactionError::DatabaseError("NATS reply channel closed".into())))?;
+
+    let result: TransferResult = serde_json::from_slice(&reply_msg.payload)
+        .map_err(|e| HttpError(TransactionError::DatabaseError(format!("Deserialization error: {}", e))))?;
+
+    if result.success {
+        let debit = result.debit_transaction.ok_or_else(|| {
+            HttpError(TransactionError::DatabaseError("Missing debit transaction in result".into()))
+        })?;
+        let credit = result.credit_transaction.ok_or_else(|| {
+            HttpError(TransactionError::DatabaseError("Missing credit transaction in result".into()))
+        })?;
+
+        Ok(ApiResponse::created(TransferResponse {
+            debit_transaction: TransactionResponse::from(debit),
+            credit_transaction: TransactionResponse::from(credit),
+        }))
+    } else {
+        let err_msg: Option<&str> = result.error_message.as_deref();
+        let err = match err_msg {
+            Some(s) if s.contains("InsufficientFunds") => TransactionError::InsufficientFunds,
+            Some(s) if s.contains("AccountNotActive") => TransactionError::AccountNotActive,
+            Some(s) if s.contains("AccountNotFound") => TransactionError::AccountNotFound,
+            Some(s) if s.contains("SelfTransferNotAllowed") => TransactionError::SelfTransferNotAllowed,
+            Some(s) if s.contains("UnauthorizedAccountAccess") => TransactionError::UnauthorizedAccountAccess,
+            Some(s) => TransactionError::DatabaseError(s.to_string()),
+            None => TransactionError::DatabaseError("Unknown worker error".to_string()),
+        };
+        Err(HttpError(err))
+    }
 }
 
 pub async fn get_balance(

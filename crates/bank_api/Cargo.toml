@@ -13,3 +13,6 @@ oracledb = { git = "https://github.com/frogdevops/rust-oracledb.git", branch = "
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }
+async-nats = "0.50.0"
+futures = "0.3"
+uuid = { version = "1.10", features = ["v4"] }
